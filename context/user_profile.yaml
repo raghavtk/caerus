@@ -1,0 +1,18 @@
+name: Raghav
+languages: []
+domains: []
+education: []
+experience: []
+projects: []
+publications: []
+skills: []
+resume_variants:
+  AI_ML: "AI/ML focused profile"
+  NETWORK_SECURITY: "Networking and security profile"
+  DATABASE: "Database and data systems profile"
+  SYSTEMS: "Low-level systems profile"
+  GENERAL: "Generalist software profile"
+voice_profile:
+  tone: "clear, direct, grounded"
+  forbidden_phrases: []
+  personal_hooks: []

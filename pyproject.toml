@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "caerus"
+version = "0.1.0"
+description = "Caerus job application agent"
+requires-python = ">=3.11"
+dependencies = [
+  "typer>=0.12.3",
+  "rich>=13.7.1",
+  "httpx>=0.27.0",
+  "loguru>=0.7.2",
+  "pydantic>=2.7.0",
+  "pydantic-settings>=2.3.0",
+  "PyYAML>=6.0.1",
+  "beautifulsoup4>=4.12.3",
+  "jinja2>=3.1.4",
+  "weasyprint>=62.0",
+  "tenacity>=8.3.0",
+  "google-genai>=0.4.0",
+  "instructor>=1.4.0",
+  "langfuse>=2.37.6",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2.0",
+]
+
+[project.scripts]
+caerus = "cli:app"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.setuptools]
+packages = ["agents", "skills", "skills.ats_scrapers", "schemas"]
+py-modules = ["cli", "config", "llm"]
