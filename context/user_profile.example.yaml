@@ -21,8 +21,15 @@ voice_profile:
   personal_hooks: []
 
 resume_variants:
-  SYSTEMS: "Low-level systems profile"
-  GENERAL: "Generalist software profile"
+  AI_ML:
+    description: "AI/ML focused profile"
+    file: your_name_resume_ml.pdf
+  SYSTEMS:
+    description: "Low-level systems profile"
+    file: your_name_resume_systems.pdf
+  GENERAL:
+    description: "Generalist software profile"
+    file: your_name_resume_sde.pdf
 
 skills:
   languages_frameworks: [Python, Go]

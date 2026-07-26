@@ -24,11 +24,39 @@ def _heuristic_select(jd: ParsedJD, profile: dict) -> ResumeVariant | None:
     return None
 
 
+def _variant_description(entry: object) -> str:
+    if isinstance(entry, dict):
+        return str(entry.get("description", ""))
+    return str(entry)
+
+
+def _resolve_resume_path(variant: ResumeVariant, profile: dict, resumes_dir: str) -> Path:
+    variants = profile.get("resume_variants", {})
+    entry = variants.get(variant.value)
+
+    if isinstance(entry, dict) and entry.get("file"):
+        path = Path(resumes_dir) / str(entry["file"])
+    else:
+        path = Path(resumes_dir) / f"{variant.value.lower()}.pdf"
+
+    if path.exists():
+        return path
+
+    general_entry = variants.get(ResumeVariant.GENERAL.value)
+    if variant != ResumeVariant.GENERAL and isinstance(general_entry, dict) and general_entry.get("file"):
+        fallback = Path(resumes_dir) / str(general_entry["file"])
+        if fallback.exists():
+            logger.warning("resume file missing for {}; falling back to GENERAL at {}", variant, fallback)
+            return fallback
+
+    return path
+
+
 def select_resume(jd: ParsedJD, company_brief: CompanyBrief | None = None) -> ResumeSelection:
     profile = get_user_profile()
     heuristic = _heuristic_select(jd, profile)
 
-    variant_desc = profile.get("resume_variants", {})
+    variant_desc = {key: _variant_description(value) for key, value in profile.get("resume_variants", {}).items()}
     candidate_context = {
         "education": profile.get("education", []),
         "experience": profile.get("experience", []),
@@ -57,8 +85,7 @@ Rules:
         selection.variant = heuristic
 
     settings = get_settings()
-    selected_name = f"{selection.variant.value.lower()}.pdf"
-    selected_path = Path(settings.resumes_dir) / selected_name
+    selected_path = _resolve_resume_path(selection.variant, profile, settings.resumes_dir)
     selection.selected_resume_path = str(selected_path)
     if not selected_path.exists():
         logger.warning("selected resume file not found at {}", selected_path)
