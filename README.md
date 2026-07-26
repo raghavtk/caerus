@@ -2,6 +2,10 @@
 
 God of opportunity, luck, and favorable moments.
 
+## Testing
+
+See [tests/README.md](tests/README.md) for the dual-tier suite (free unit tests vs opt-in live agent evals). Default `pytest` never hits Gemini.
+
 ## Observability
 
 Caerus emits optional Langfuse traces for each pipeline run. Traces are hierarchical: a root `caerus.pipeline` span groups agent step spans, LLM generations, and tool calls (web search, Notion sync).

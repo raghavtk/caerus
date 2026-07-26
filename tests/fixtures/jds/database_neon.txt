@@ -1,0 +1,21 @@
+Software Engineer, Database Internals — Neon
+
+Location: Remote
+Seniority: 0-2 years
+
+About the role:
+Help build a serverless Postgres platform. You will work on storage, query path
+performance, and developer-facing database infrastructure.
+
+Requirements:
+- Strong CS fundamentals (data structures, concurrency, OS concepts)
+- Experience with SQL and at least one systems language (Go, Rust, or C++)
+- Interest in database internals, storage engines, or distributed systems
+- Ability to write clear design docs and debug production issues
+
+Preferred:
+- Postgres contribution or extension experience
+- Familiarity with MVCC, WAL, or replication concepts
+- Prior work on data infrastructure
+
+Domain: database, distributed systems, data infrastructure

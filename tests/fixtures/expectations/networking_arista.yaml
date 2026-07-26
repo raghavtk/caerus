@@ -1,0 +1,14 @@
+id: networking_arista
+description: Networking/security JD should prefer NETWORK_SECURITY or SYSTEMS.
+jd_parser:
+  company_contains: Arista
+  role_contains: Engineer
+  domain_signals_any: [networking, security, systems]
+  seniority_in: ["2-5 yrs", "0-2 yrs", "5+ yrs"]
+resume_selector:
+  variant_in: [NETWORK_SECURITY, SYSTEMS]
+  grade_in: [A, B, C, D, F]
+cover_letter:
+  max_words: 300
+  min_paragraphs: 3
+  forbid_opener_i: true

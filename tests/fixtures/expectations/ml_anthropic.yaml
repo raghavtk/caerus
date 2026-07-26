@@ -1,0 +1,14 @@
+id: ml_anthropic
+description: ML JD should surface ml/ai-infra signals and AI_ML resume variant.
+jd_parser:
+  company_contains: Anthropic
+  role_contains: Learning
+  domain_signals_any: [ml, ai-infra]
+  seniority_in: ["New Grad", "0-2 yrs"]
+resume_selector:
+  variant_in: [AI_ML]
+  grade_in: [A, B, C, D, F]
+cover_letter:
+  max_words: 300
+  min_paragraphs: 3
+  forbid_opener_i: true

@@ -1,0 +1,14 @@
+id: ambiguous_backend
+description: Generic backend JD — parser should not invent niche domain signals.
+jd_parser:
+  company_contains: Acme
+  role_contains: Engineer
+  domain_signals_any: [backend, distributed, systems, devtools]
+  seniority_in: ["New Grad", "0-2 yrs"]
+resume_selector:
+  variant_in: [GENERAL, SYSTEMS, DATABASE, AI_ML, NETWORK_SECURITY]
+  grade_in: [A, B, C, D, F]
+cover_letter:
+  max_words: 300
+  min_paragraphs: 3
+  forbid_opener_i: true
