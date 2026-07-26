@@ -1,0 +1,14 @@
+id: systems_cloudflare
+description: Systems/networking JD should parse cleanly and prefer systems or network resume.
+jd_parser:
+  company_contains: Cloudflare
+  role_contains: Engineer
+  domain_signals_any: [systems, networking]
+  seniority_in: ["New Grad", "0-2 yrs", "2-5 yrs"]
+resume_selector:
+  variant_in: [SYSTEMS, NETWORK_SECURITY]
+  grade_in: [A, B, C, D, F]
+cover_letter:
+  max_words: 300
+  min_paragraphs: 3
+  forbid_opener_i: true

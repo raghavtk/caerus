@@ -1,0 +1,24 @@
+---
+description: Never run live Gemini/agent evals unless the user explicitly asks
+alwaysApply: true
+---
+
+# No live agent evals by default
+
+Caerus live evals consume the user's Gemini monthly quota (~1000 requests).
+
+## Never do these unless the user explicitly requests it in the current turn
+
+- Set `CAERUS_ALLOW_LIVE=1`
+- Run `pytest -m live`
+- Run `caerus eval run ...`
+- Call agents (`parse_jd`, `research_company`, `select_resume`, `generate_cover_letter`, `orchestrate`) against real Gemini for "just checking"
+
+## Always safe
+
+- `pytest` / `pytest -m "not live"`
+- Unit tests under `tests/` that mock `generate_structured` / `generate_text`
+- `caerus eval list`
+- Editing fixtures under `tests/fixtures/`
+
+If unsure whether a command hits Gemini or Serper/Tavily, do not run it — ask the user.

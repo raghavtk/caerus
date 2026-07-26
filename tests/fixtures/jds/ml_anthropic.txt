@@ -1,0 +1,22 @@
+Machine Learning Engineer — Anthropic
+
+Location: San Francisco, CA / Remote
+Seniority: New Grad or 0-2 years
+
+About the role:
+Join our applied ML team building evaluation pipelines, fine-tuning workflows, and
+inference tooling for large language models. You will work with PyTorch, experiment
+tracking, and production serving paths.
+
+Requirements:
+- Python proficiency and comfort with numerical computing
+- Coursework or project experience in machine learning
+- Familiarity with PyTorch or JAX
+- Ability to read papers and turn ideas into measurable experiments
+
+Preferred:
+- Experience with LLM fine-tuning, RLHF, or eval harnesses
+- Distributed training or GPU optimization exposure
+- Strong software engineering habits (tests, code review)
+
+Domain: machine learning, AI infrastructure, evaluation

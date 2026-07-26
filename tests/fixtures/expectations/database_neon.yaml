@@ -1,0 +1,14 @@
+id: database_neon
+description: Database internals JD should prefer DATABASE variant.
+jd_parser:
+  company_contains: Neon
+  role_contains: Database
+  domain_signals_any: [database, distributed, data-infra]
+  seniority_in: ["New Grad", "0-2 yrs", "2-5 yrs"]
+resume_selector:
+  variant_in: [DATABASE, SYSTEMS]
+  grade_in: [A, B, C, D, F]
+cover_letter:
+  max_words: 300
+  min_paragraphs: 3
+  forbid_opener_i: true

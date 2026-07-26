@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import typer
@@ -9,12 +10,19 @@ from rich.table import Table
 
 from agents.orchestrator import orchestrate
 from config import get_settings, get_user_profile
+from skills.agent_eval import AGENTS, list_fixture_ids, run_agent_eval
 from skills.tracing import build_mcp_config_json, verify_langfuse
 
 app = typer.Typer(help="Caerus job application CLI")
 langfuse_app = typer.Typer(help="Langfuse tracing and MCP helpers")
+eval_app = typer.Typer(
+    help="Opt-in agent evals against fixtures (uses Gemini quota). See tests/README.md.",
+)
 app.add_typer(langfuse_app, name="langfuse")
+app.add_typer(eval_app, name="eval")
 console = Console()
+
+LIVE_ENV_VAR = "CAERUS_ALLOW_LIVE"
 
 
 @app.command()
@@ -105,6 +113,70 @@ def langfuse_mcp_config() -> None:
 def profile() -> None:
     profile_data = get_user_profile()
     console.print_json(json.dumps(profile_data))
+
+
+def _require_live_allowed() -> None:
+    if os.getenv(LIVE_ENV_VAR, "").strip() not in {"1", "true", "yes"}:
+        console.print(
+            f"[red]Refusing to run live evals.[/red] Set {LIVE_ENV_VAR}=1 first.\n"
+            "Example: CAERUS_ALLOW_LIVE=1 caerus eval run jd_parser --fixture systems_cloudflare"
+        )
+        raise typer.Exit(code=2)
+
+
+@eval_app.command("list")
+def eval_list() -> None:
+    """List fixture IDs and agents available for eval."""
+    console.print("[bold]Fixtures[/bold]")
+    for fixture_id in list_fixture_ids():
+        console.print(f"  - {fixture_id}")
+    console.print("\n[bold]Agents[/bold]")
+    for agent in AGENTS:
+        console.print(f"  - {agent}")
+
+
+@eval_app.command("run")
+def eval_run(
+    agent: str = typer.Argument(help="Agent to evaluate: jd_parser | resume_selector | cover_letter | company_research"),
+    fixture: str | None = typer.Option(
+        default=None,
+        help="Fixture id from tests/fixtures/jds/ (omit to run all fixtures)",
+    ),
+    dump_json: bool = typer.Option(default=False, help="Print raw agent output JSON"),
+) -> None:
+    """Run a single-agent eval against synthetic JD fixtures (costs API quota)."""
+    _require_live_allowed()
+    if agent not in AGENTS:
+        console.print(f"[red]Unknown agent:[/red] {agent}. Choose from: {', '.join(AGENTS)}")
+        raise typer.Exit(code=1)
+
+    fixtures = [fixture] if fixture else list_fixture_ids()
+    if fixture and fixture not in list_fixture_ids():
+        console.print(f"[red]Unknown fixture:[/red] {fixture}")
+        raise typer.Exit(code=1)
+
+    failures = 0
+    for fixture_id in fixtures:
+        console.print(f"\n[bold]{agent}[/bold] @ [cyan]{fixture_id}[/cyan]")
+        try:
+            report = run_agent_eval(agent, fixture_id)
+        except Exception as exc:
+            failures += 1
+            console.print(f"[red]ERROR:[/red] {exc}")
+            continue
+
+        for check in report.checks:
+            mark = "✅" if check.ok else "❌"
+            console.print(f"  {mark} {check.name}: {check.detail}")
+            if not check.ok:
+                failures += 1
+        if dump_json:
+            console.print_json(json.dumps(report.output, default=str))
+
+    if failures:
+        console.print(f"\n[red]{failures} check(s) failed[/red]")
+        raise typer.Exit(code=1)
+    console.print("\n[green]All checks passed[/green]")
 
 
 if __name__ == "__main__":

@@ -35,6 +35,10 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+# Live eval dumps (local only)
+eval_runs/
+tests/eval/results/
+
 # Test and type-check caches
 .pytest_cache/
 .mypy_cache/

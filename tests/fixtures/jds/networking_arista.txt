@@ -1,0 +1,22 @@
+Software Engineer, Network OS — Arista Networks
+
+Location: Santa Clara, CA
+Seniority: 2-5 years
+
+About the role:
+Build and maintain software for high-scale network operating systems. Work spans
+control-plane services, switch software, and security-sensitive networking features
+used by large enterprise and cloud customers.
+
+Requirements:
+- C/C++ or Go experience in systems/networking contexts
+- Solid understanding of routing, switching, or network protocols
+- Experience debugging multi-process systems on Linux
+- Comfort with security considerations in networking software
+
+Preferred:
+- Prior internship or industry experience in networking vendors
+- Familiarity with BGP, EVPN, or similar protocols
+- Knowledge of FIPS / Common Criteria style compliance work is a plus
+
+Domain: networking, security, systems

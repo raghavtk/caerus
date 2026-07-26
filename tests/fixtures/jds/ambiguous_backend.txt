@@ -1,0 +1,22 @@
+Backend Software Engineer — Acme Corp
+
+Location: New York, NY (Hybrid)
+Seniority: New Grad
+
+About the role:
+Acme is hiring a backend engineer to build APIs and services that power our product.
+You will work across the stack of internal services, ship features with product
+partners, and improve reliability.
+
+Requirements:
+- Experience with Python, Go, or Java
+- Familiarity with REST APIs and relational databases
+- Comfortable with Git, code review, and automated tests
+- Strong communication skills
+
+Preferred:
+- Internship experience at a product company
+- Exposure to cloud platforms (AWS/GCP)
+- Interest in developer tooling
+
+Domain: backend product engineering

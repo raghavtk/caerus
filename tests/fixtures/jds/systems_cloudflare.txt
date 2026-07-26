@@ -1,0 +1,22 @@
+Software Engineer, Systems — Cloudflare
+
+Location: Remote (US)
+Seniority: 0-2 years experience
+
+About the role:
+We are looking for a Software Engineer to work on high-performance systems close to the
+metal. You will build networking and proxy infrastructure that serves millions of requests
+per second, with a focus on Linux, eBPF, and observability.
+
+Requirements:
+- Strong programming skills in Go or C/C++
+- Experience with Linux systems programming
+- Familiarity with networking concepts (TCP/IP, HTTP, load balancing)
+- Interest in eBPF, performance profiling, or kernel-adjacent tooling
+
+Preferred:
+- Rust experience
+- Prior work on CDN, reverse proxies, or edge computing
+- Contributions to open-source systems software
+
+Domain: systems infrastructure, networking, performance
