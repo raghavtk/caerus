@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,11 @@ JD_DIR = FIXTURES_ROOT / "jds"
 EXPECT_DIR = FIXTURES_ROOT / "expectations"
 
 AGENTS = ("jd_parser", "resume_selector", "cover_letter", "company_research")
+LIVE_ENV_VAR = "CAERUS_ALLOW_LIVE"
+
+
+def live_evals_allowed() -> bool:
+    return os.getenv(LIVE_ENV_VAR, "").strip().lower() in {"1", "true", "yes"}
 
 
 @dataclass
@@ -41,6 +47,10 @@ class EvalReport:
 
 
 def list_fixture_ids() -> list[str]:
+    if not JD_DIR.exists():
+        raise FileNotFoundError(
+            f"JD fixtures directory not found: {JD_DIR} (run from the repo checkout)"
+        )
     return sorted(path.stem for path in JD_DIR.glob("*.txt"))
 
 
@@ -105,8 +115,15 @@ def check_cover_letter(letter: CoverLetter, expect: dict[str, Any]) -> list[Chec
     body = letter.body.strip()
     paragraphs = [p for p in body.split("\n\n") if p.strip()]
     if (max_words := expect.get("max_words")) is not None:
-        ok = letter.word_count <= int(max_words)
-        checks.append(CheckResult("max_words", ok, f"got {letter.word_count}"))
+        computed_word_count = len(body.split())
+        ok = computed_word_count <= int(max_words)
+        checks.append(
+            CheckResult(
+                "max_words",
+                ok,
+                f"got {computed_word_count} (model={letter.word_count})",
+            )
+        )
     if (min_paragraphs := expect.get("min_paragraphs")) is not None:
         ok = len(paragraphs) >= int(min_paragraphs)
         checks.append(CheckResult("min_paragraphs", ok, f"got {len(paragraphs)}"))
@@ -121,7 +138,6 @@ def check_company_research(brief: CompanyBrief) -> list[CheckResult]:
     return [
         CheckResult("company_set", bool(brief.company and brief.company != "Unknown"), f"got {brief.company!r}"),
         CheckResult("fit_score_range", 0 <= brief.fit_score <= 100, f"got {brief.fit_score}"),
-        CheckResult("has_sources_or_unknown_ok", True, f"sources={len(brief.sources)}"),
     ]
 
 

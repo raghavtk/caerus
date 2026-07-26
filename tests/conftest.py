@@ -1,25 +1,20 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
+
+from skills.agent_eval import LIVE_ENV_VAR, live_evals_allowed
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 JD_FIXTURES_DIR = FIXTURES_DIR / "jds"
 EXPECTATIONS_DIR = FIXTURES_DIR / "expectations"
 
-LIVE_ENV_VAR = "CAERUS_ALLOW_LIVE"
-
-
-def _live_allowed() -> bool:
-    return os.getenv(LIVE_ENV_VAR, "").strip() in {"1", "true", "yes"}
-
 
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers",
-        "live: hits Gemini / search APIs; requires CAERUS_ALLOW_LIVE=1",
+        f"live: hits Gemini / search APIs; requires {LIVE_ENV_VAR}=1",
     )
 
 
@@ -28,7 +23,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
     Deselect (not skip) so default `pytest` stays quiet and does not burn quota.
     """
-    if _live_allowed():
+    if live_evals_allowed():
         return
     items[:] = [item for item in items if "live" not in item.keywords]
 

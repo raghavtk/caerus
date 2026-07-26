@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 import typer
@@ -10,7 +9,13 @@ from rich.table import Table
 
 from agents.orchestrator import orchestrate
 from config import get_settings, get_user_profile
-from skills.agent_eval import AGENTS, list_fixture_ids, run_agent_eval
+from skills.agent_eval import (
+    AGENTS,
+    LIVE_ENV_VAR,
+    list_fixture_ids,
+    live_evals_allowed,
+    run_agent_eval,
+)
 from skills.tracing import build_mcp_config_json, verify_langfuse
 
 app = typer.Typer(help="Caerus job application CLI")
@@ -21,8 +26,6 @@ eval_app = typer.Typer(
 app.add_typer(langfuse_app, name="langfuse")
 app.add_typer(eval_app, name="eval")
 console = Console()
-
-LIVE_ENV_VAR = "CAERUS_ALLOW_LIVE"
 
 
 @app.command()
@@ -116,7 +119,7 @@ def profile() -> None:
 
 
 def _require_live_allowed() -> None:
-    if os.getenv(LIVE_ENV_VAR, "").strip() not in {"1", "true", "yes"}:
+    if not live_evals_allowed():
         console.print(
             f"[red]Refusing to run live evals.[/red] Set {LIVE_ENV_VAR}=1 first.\n"
             "Example: CAERUS_ALLOW_LIVE=1 caerus eval run jd_parser --fixture systems_cloudflare"
@@ -128,7 +131,12 @@ def _require_live_allowed() -> None:
 def eval_list() -> None:
     """List fixture IDs and agents available for eval."""
     console.print("[bold]Fixtures[/bold]")
-    for fixture_id in list_fixture_ids():
+    try:
+        fixture_ids = list_fixture_ids()
+    except FileNotFoundError as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    for fixture_id in fixture_ids:
         console.print(f"  - {fixture_id}")
     console.print("\n[bold]Agents[/bold]")
     for agent in AGENTS:
