@@ -7,6 +7,7 @@ from loguru import logger
 
 from config import Settings, get_settings
 from schemas.models import ApplicationPackage
+from skills.tracing import trace_span
 
 
 def _build_properties(package: ApplicationPackage) -> dict[str, Any]:
@@ -55,9 +56,20 @@ def _write_via_api(package: ApplicationPackage, settings: Settings) -> Applicati
 def write_to_notion(package: ApplicationPackage) -> ApplicationPackage:
     settings = get_settings()
     try:
-        if settings.notion_via_mcp:
-            logger.warning("notion MCP configured but direct API path is used in this implementation")
-        return _write_via_api(package, settings)
+        with trace_span(
+            "caerus.tool.notion_write",
+            {
+                "company": package.jd.company,
+                "role": package.jd.role,
+                "via_mcp": settings.notion_via_mcp,
+            },
+        ) as span:
+            if settings.notion_via_mcp:
+                logger.warning("notion MCP configured but direct API path is used in this implementation")
+            package = _write_via_api(package, settings)
+            if span is not None:
+                span.update(output={"notion_url": package.notion_url, "notion_page_id": package.notion_page_id})
+            return package
     except Exception as exc:
         logger.warning("notion write failed (non-fatal): {}", exc)
         return package
