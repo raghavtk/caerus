@@ -83,7 +83,4 @@ class ApplicationPackage(BaseModel):
     selected_resume_copy_path: str | None = None
     notion_page_id: str | None = None
     notion_url: str | None = None
-    session_id: str | None = None
-    trace_id: str | None = None
-    trace_url: str | None = None
     status: ApplicationStatus = ApplicationStatus.CREATED

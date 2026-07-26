@@ -24,7 +24,7 @@ class Settings(BaseSettings):
 
     langfuse_public_key: str | None = None
     langfuse_secret_key: str | None = None
-    langfuse_host: str = "https://us.cloud.langfuse.com"
+    langfuse_host: str = "https://cloud.langfuse.com"
 
     outputs_dir: str = "outputs"
     resumes_dir: str = "resumes"
@@ -99,43 +99,6 @@ def get_ranked_projects(profile: dict[str, Any] | None = None) -> list[dict[str,
 
 def get_cover_letter_projects(profile: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     return [project for project in get_ranked_projects(profile) if _include_in_cover_letter(project)]
-
-
-def compact_experience(experience: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    compact: list[dict[str, Any]] = []
-    for job in experience:
-        entry: dict[str, Any] = {
-            "company": job.get("company"),
-            "title": job.get("title"),
-            "dates": job.get("dates"),
-            "bullets": (job.get("bullets") or [])[:3],
-        }
-        stories = job.get("star_stories") or []
-        if stories:
-            entry["story_titles"] = [story.get("title") for story in stories[:6]]
-        compact.append(entry)
-    return compact
-
-
-def compact_projects(projects: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    compact: list[dict[str, Any]] = []
-    for project in projects:
-        description = str(project.get("description", ""))
-        if len(description) > 220:
-            description = description[:220].rstrip() + "..."
-        compact.append(
-            {
-                "name": project.get("name"),
-                "tier": project.get("tier"),
-                "stack": project.get("stack"),
-                "description": description,
-            }
-        )
-    return compact
-
-
-def compact_publications(publications: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [{"title": pub.get("title"), "venue": pub.get("venue")} for pub in publications[:3]]
 
 
 @lru_cache(maxsize=1)

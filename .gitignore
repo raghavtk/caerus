@@ -63,7 +63,6 @@ resumes/*
 !resumes/.gitkeep
 
 # IDE / editor
-.cursor/mcp.json
 .idea/
 .vscode/
 *.swp
