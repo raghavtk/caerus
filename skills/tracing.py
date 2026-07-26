@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Iterator
@@ -12,10 +13,12 @@ from config import get_settings
 
 _LANGFUSE_CLIENT: Any | None = None
 _LANGFUSE_DISABLED = False
+_INIT_FAILURE_COOLDOWN_SECONDS = 60.0
+_last_init_failure_at: float | None = None
 
 
 def _get_langfuse_client() -> Any | None:
-    global _LANGFUSE_CLIENT, _LANGFUSE_DISABLED
+    global _LANGFUSE_CLIENT, _LANGFUSE_DISABLED, _last_init_failure_at
     if _LANGFUSE_DISABLED:
         return None
     if _LANGFUSE_CLIENT is not None:
@@ -24,6 +27,12 @@ def _get_langfuse_client() -> Any | None:
     settings = get_settings()
     if not settings.langfuse_enabled:
         return None
+
+    if _last_init_failure_at is not None:
+        elapsed = time.monotonic() - _last_init_failure_at
+        if elapsed < _INIT_FAILURE_COOLDOWN_SECONDS:
+            return None
+        _last_init_failure_at = None
 
     try:
         from langfuse import Langfuse
@@ -38,9 +47,11 @@ def _get_langfuse_client() -> Any | None:
             secret_key=settings.langfuse_secret_key,
             host=settings.langfuse_host,
         )
+        _last_init_failure_at = None
         return _LANGFUSE_CLIENT
     except Exception as exc:  # pragma: no cover
         logger.warning("failed to initialize langfuse client: {}", exc)
+        _last_init_failure_at = time.monotonic()
         return None
 
 
@@ -255,6 +266,7 @@ def trace_generation(
             metadata=metadata or {},
         ) as generation:
             generation.update(output=output_text)
-        flush_traces()
     except Exception as exc:  # pragma: no cover
         logger.warning("langfuse generation trace failed (non-fatal): {}", exc)
+    finally:
+        flush_traces()

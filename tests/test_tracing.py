@@ -12,9 +12,11 @@ from skills import tracing
 def reset_tracing_state() -> None:
     tracing._LANGFUSE_CLIENT = None
     tracing._LANGFUSE_DISABLED = False
+    tracing._last_init_failure_at = None
     yield
     tracing._LANGFUSE_CLIENT = None
     tracing._LANGFUSE_DISABLED = False
+    tracing._last_init_failure_at = None
 
 
 def test_make_session_id_format() -> None:
@@ -109,6 +111,38 @@ def test_trace_generation_uses_current_observation() -> None:
 
     mock_client.start_as_current_observation.assert_called_once()
     mock_generation.update.assert_called_once_with(output='{"ok": true}')
+    mock_client.flush.assert_called_once()
+
+
+def test_init_failure_cooldown_avoids_repeated_init() -> None:
+    with patch("skills.tracing.get_settings") as mock_settings:
+        mock_settings.return_value.langfuse_enabled = True
+        mock_settings.return_value.langfuse_public_key = "pk-test"
+        mock_settings.return_value.langfuse_secret_key = "sk-test"
+        mock_settings.return_value.langfuse_host = "https://us.cloud.langfuse.com"
+        with patch("langfuse.Langfuse", side_effect=RuntimeError("bad host")) as mock_langfuse:
+            assert tracing._get_langfuse_client() is None
+            assert tracing._get_langfuse_client() is None
+            assert mock_langfuse.call_count == 1
+
+
+def test_trace_generation_flushes_when_update_fails() -> None:
+    mock_client = MagicMock()
+    mock_ctx = MagicMock()
+    mock_generation = MagicMock()
+    mock_generation.update.side_effect = RuntimeError("update failed")
+    mock_ctx.__enter__.return_value = mock_generation
+    mock_client.start_as_current_observation.return_value = mock_ctx
+
+    with patch("skills.tracing._get_langfuse_client", return_value=mock_client):
+        tracing.trace_generation(
+            model="gemini-2.5-flash",
+            system_prompt="sys",
+            user_prompt="user",
+            output_text='{"ok": true}',
+        )
+
+    mock_client.flush.assert_called_once()
 
 
 def test_verify_langfuse_reports_missing_keys() -> None:
