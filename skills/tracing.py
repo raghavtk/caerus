@@ -41,7 +41,6 @@ def _get_langfuse_client() -> Any | None:
         return _LANGFUSE_CLIENT
     except Exception as exc:  # pragma: no cover
         logger.warning("failed to initialize langfuse client: {}", exc)
-        _LANGFUSE_DISABLED = True
         return None
 
 
@@ -256,5 +255,6 @@ def trace_generation(
             metadata=metadata or {},
         ) as generation:
             generation.update(output=output_text)
+        flush_traces()
     except Exception as exc:  # pragma: no cover
         logger.warning("langfuse generation trace failed (non-fatal): {}", exc)

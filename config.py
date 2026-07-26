@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     def langfuse_enabled(self) -> bool:
         return bool(self.langfuse_public_key and self.langfuse_secret_key)
 
+    @property
+    def langfuse_mcp_url(self) -> str:
+        return f"{self.langfuse_host.rstrip('/')}/api/public/mcp"
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
