@@ -56,6 +56,10 @@ coverage.xml
 # Caerus runtime outputs
 outputs/
 
+# Personal profile data (keep real files local; commit *.example.yaml only)
+context/user_profile.yaml
+context/profile_archive.yaml
+
 # IDE / editor
 .idea/
 .vscode/

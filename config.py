@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     outputs_dir: str = "outputs"
     resumes_dir: str = "resumes"
     user_profile_path: str = "context/user_profile.yaml"
+    profile_archive_path: str = "context/profile_archive.yaml"
 
     @property
     def notion_via_mcp(self) -> bool:
@@ -68,5 +69,53 @@ def get_user_profile() -> dict[str, Any]:
 
     if not isinstance(content, dict):
         logger.warning("user profile content is not a mapping at {}", path)
+        return {}
+
+    grad_projects = content.get("grad_projects", [])
+    undergrad_projects = content.get("undergrad_projects", [])
+    if grad_projects or undergrad_projects:
+        content["projects"] = [*grad_projects, *undergrad_projects]
+    return content
+
+
+_TIER_ORDER = {"A": 0, "B": 1, "C": 2}
+
+
+def _project_tier(project: dict[str, Any]) -> str:
+    return str(project.get("tier", "B")).upper()
+
+
+def _include_in_cover_letter(project: dict[str, Any]) -> bool:
+    if "include_in_cover_letter" in project:
+        return bool(project["include_in_cover_letter"])
+    return _project_tier(project) != "C"
+
+
+def get_ranked_projects(profile: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    profile = profile or get_user_profile()
+    projects = profile.get("projects", [])
+    return sorted(projects, key=lambda project: _TIER_ORDER.get(_project_tier(project), 1))
+
+
+def get_cover_letter_projects(profile: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    return [project for project in get_ranked_projects(profile) if _include_in_cover_letter(project)]
+
+
+@lru_cache(maxsize=1)
+def get_profile_archive() -> dict[str, Any]:
+    settings = get_settings()
+    path = Path(settings.profile_archive_path)
+    if not path.exists():
+        logger.warning("profile archive not found at {}", path)
+        return {}
+
+    try:
+        content = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except Exception as exc:  # pragma: no cover
+        logger.warning("failed reading profile archive {}: {}", path, exc)
+        return {}
+
+    if not isinstance(content, dict):
+        logger.warning("profile archive content is not a mapping at {}", path)
         return {}
     return content

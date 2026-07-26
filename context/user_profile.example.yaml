@@ -1,0 +1,60 @@
+name: Your Name
+
+languages:
+  - Python
+  - Go
+
+domains:
+  - backend
+  - systems
+
+education:
+  - institution: Example University
+    location: "City, ST"
+    degree: "Master's in Computer Science"
+    dates: "2025 - 2027 (Expected)"
+
+voice_profile:
+  tone: "clear, direct, grounded"
+  forbidden_phrases:
+    - "deeply passionate about"
+  personal_hooks: []
+
+resume_variants:
+  SYSTEMS: "Low-level systems profile"
+  GENERAL: "Generalist software profile"
+
+skills:
+  languages_frameworks: [Python, Go]
+  backend_distributed: [Docker, Kubernetes]
+
+# tier: A = lead with, B = supporting, C = low-signal
+# include_in_cover_letter: whether agents may cite this in cover letters
+
+grad_projects:
+  - name: Example Agent Project
+    tier: A
+    include_in_cover_letter: true
+    stack: [Python, Typer]
+    dates: "2026 - Present"
+    description: "Short description of a strong recent project."
+
+undergrad_projects:
+  - name: Example Systems Project
+    tier: A
+    include_in_cover_letter: true
+    stack: [Go]
+    dates: "2022"
+    description: "Short description of a strong undergrad project."
+
+publications: []
+
+experience:
+  - company: Example Corp
+    location: "City, ST"
+    title: Software Engineering Intern
+    dates: "2026 - Present"
+    bullets:
+      - "One concrete accomplishment with technical detail."
+
+other_activities: []

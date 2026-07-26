@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from config import get_user_profile
+from config import get_cover_letter_projects, get_ranked_projects, get_user_profile
 from llm import generate_structured
 from schemas.models import CompanyBrief, CoverLetter, ParsedJD, ResumeSelection
 from pydantic import BaseModel
@@ -19,7 +19,8 @@ def _build_system_prompt(profile: dict) -> str:
         f"Personal hooks: {hooks}\n"
         "Structure rule: exactly 3 paragraphs: hook -> fit -> close.\n"
         "Hard rules: max 350 words, no bullets, no generic close, no opener starting with 'I', "
-        "must include one specific hook and one specific project."
+        "must include one specific hook and one specific project. "
+        "Prefer tier A projects when choosing the specific project; use tier B only if clearly more relevant."
     )
 
 
@@ -39,7 +40,7 @@ def _build_user_prompt(
         f"Resume selection: {resume_selection.model_dump()}\n\n"
         f"Candidate education: {profile.get('education', [])}\n"
         f"Candidate experience: {profile.get('experience', [])}\n"
-        f"Candidate projects: {profile.get('projects', [])}\n"
+        f"Candidate projects: {get_cover_letter_projects(profile)}\n"
         f"Candidate publications: {profile.get('publications', [])}"
     )
 

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from config import get_settings, get_user_profile
+from config import get_ranked_projects, get_settings, get_user_profile
 from llm import generate_structured
 from schemas.models import CompanyBrief, ParsedJD, ResumeSelection, ResumeVariant
 
@@ -32,7 +32,7 @@ def select_resume(jd: ParsedJD, company_brief: CompanyBrief | None = None) -> Re
     candidate_context = {
         "education": profile.get("education", []),
         "experience": profile.get("experience", []),
-        "projects": profile.get("projects", []),
+        "projects": get_ranked_projects(profile),
         "skills": profile.get("skills", []),
     }
     brief_summary = company_brief.model_dump() if company_brief else {}

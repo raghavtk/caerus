@@ -1,0 +1,12 @@
+# Optional long-tail personal context — not loaded by agents by default.
+# Copy to profile_archive.yaml locally if you use it.
+
+early_background:
+  - "Optional high school or early-life context for voice distillation."
+
+early_college_projects:
+  - name: "Early College Project"
+    tier: C
+    include_in_cover_letter: false
+    dates: "first year"
+    description: "Low-signal early project kept for reference only."

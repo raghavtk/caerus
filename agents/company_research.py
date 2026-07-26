@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from loguru import logger
 
-from config import get_user_profile
+from config import get_ranked_projects, get_user_profile
 from llm import generate_structured
 from schemas.models import CompanyBrief, ParsedJD
 from skills.search import web_search
@@ -44,7 +44,7 @@ def research_company(jd: ParsedJD) -> CompanyBrief:
         "languages": profile.get("languages", []),
         "domains": profile.get("domains", []),
         "experience": profile.get("experience", []),
-        "projects": profile.get("projects", []),
+        "projects": get_ranked_projects(profile),
     }
 
     system_prompt = """
