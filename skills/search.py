@@ -7,18 +7,23 @@ from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from config import get_settings
+from skills.tracing import trace_span
 
 
 def web_search(query: str, num_results: int = 5) -> list[dict[str, str]]:
     settings = get_settings()
     provider = settings.search_provider
-    if provider == "serper":
-        return _serper_search(query=query, num_results=num_results)
-    if provider == "tavily":
-        return _tavily_search(query=query, num_results=num_results)
-
-    logger.warning("no search provider configured; returning empty search results")
-    return []
+    with trace_span("caerus.tool.web_search", {"query": query, "provider": provider}) as span:
+        if provider == "serper":
+            results = _serper_search(query=query, num_results=num_results)
+        elif provider == "tavily":
+            results = _tavily_search(query=query, num_results=num_results)
+        else:
+            logger.warning("no search provider configured; returning empty search results")
+            results = []
+        if span is not None:
+            span.update(output={"result_count": len(results)})
+        return results
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=5))

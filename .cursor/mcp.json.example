@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "langfuse": {
+      "url": "https://us.cloud.langfuse.com/api/public/mcp",
+      "headers": {
+        "Authorization": "Basic REPLACE_WITH_BASE64_PK_SK"
+      }
+    },
+    "langfuse-docs": {
+      "url": "https://langfuse.com/api/mcp"
+    }
+  }
+}
