@@ -126,6 +126,7 @@ def test_lever_api_normalizes_all_sections_without_duplicate_opening() -> None:
     assert "Workplace Type: remote" in posting.raw_text
     assert "Compensation: $160,000 - $200,000 USD" in posting.raw_text
     assert "Compensation: USD 160,000 - 200,000 per year" in posting.raw_text
+    assert posting.raw_text.count("$160,000 - $200,000 USD") == 1
     assert posting.raw_text.count("Build dependable storage systems") == 1
     assert posting.raw_text.index("Requirements") < posting.raw_text.index("Nice to have")
     assert "RETAIN-ME-LATE-REQUIREMENT" in posting.raw_text

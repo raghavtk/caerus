@@ -92,9 +92,6 @@ def _description_from_api(payload: dict[str, object]) -> str:
         if value:
             sections.append(value)
             break
-    salary_description = clean_text(payload.get("salaryDescriptionPlain"))
-    if salary_description:
-        sections.append(salary_description)
     description = clean_text("\n\n".join(sections))
     if not is_usable_description(description):
         raise ValueError("Lever API returned no usable description")
