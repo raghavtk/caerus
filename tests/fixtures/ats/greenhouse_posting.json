@@ -1,0 +1,9 @@
+{
+  "id": 1234567,
+  "title": "Platform Engineer",
+  "company_name": "Example Systems",
+  "location": {"name": "New York, NY or Remote"},
+  "departments": [{"name": "Engineering"}],
+  "pay_input_ranges": [{"title": "Base salary", "min_cents": 14500000, "max_cents": 18500000, "currency_type": "USD"}],
+  "content": "<h2>About the role</h2><p>Build reliable services for data-intensive products &amp; internal teams.</p><h2>What you will do</h2><ul><li>Design Linux services</li><li>Improve database reliability</li></ul><h2>Requirements</h2><ul><li>3+ years of backend experience</li><li>Python or Go</li></ul><h2>Preferred qualifications</h2><ul><li>Rust</li><li>RETAIN-ME-LATE-REQUIREMENT</li></ul>"
+}
