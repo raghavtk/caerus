@@ -4,7 +4,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from config import get_ranked_projects, get_settings, get_user_profile
+from config import compact_experience, compact_projects, get_ranked_projects, get_settings, get_user_profile
 from llm import generate_structured
 from schemas.models import CompanyBrief, ParsedJD, ResumeSelection, ResumeVariant
 
@@ -59,17 +59,17 @@ def select_resume(jd: ParsedJD, company_brief: CompanyBrief | None = None) -> Re
     variant_desc = {key: _variant_description(value) for key, value in profile.get("resume_variants", {}).items()}
     candidate_context = {
         "education": profile.get("education", []),
-        "experience": profile.get("experience", []),
-        "projects": get_ranked_projects(profile),
+        "experience": compact_experience(profile.get("experience", [])),
+        "projects": compact_projects(get_ranked_projects(profile)),
         "skills": profile.get("skills", []),
     }
     brief_summary = company_brief.model_dump() if company_brief else {}
     system_prompt = """
 You are an expert recruiter selecting the best resume variant.
 Rules:
-- Grade honestly (A-F).
+- Grade honestly using only A, B, C, D, or F (no plus/minus).
 - A gap is a gap only if explicitly required by the JD.
-- Provide specific talking points for a targeted cover letter.
+- strengths, gaps, and talking_points: max 3 items each, under 20 words per item.
 - Return structured output only.
 """
     user_prompt = (
@@ -79,7 +79,12 @@ Rules:
         f"Candidate background: {candidate_context}\n"
         f"Heuristic hint: {heuristic.value if heuristic else 'None'}"
     )
-    selection = generate_structured(ResumeSelection, system_prompt=system_prompt, user_prompt=user_prompt)
+    selection = generate_structured(
+        ResumeSelection,
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        max_tokens=2048,
+    )
 
     if heuristic and selection.variant == ResumeVariant.GENERAL:
         selection.variant = heuristic

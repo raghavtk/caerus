@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from loguru import logger
 
-from config import get_ranked_projects, get_user_profile
+from config import compact_experience, compact_projects, get_ranked_projects, get_user_profile
 from llm import generate_structured
 from schemas.models import CompanyBrief, ParsedJD
 from skills.search import web_search
@@ -43,14 +43,15 @@ def research_company(jd: ParsedJD) -> CompanyBrief:
     candidate_context = {
         "languages": profile.get("languages", []),
         "domains": profile.get("domains", []),
-        "experience": profile.get("experience", []),
-        "projects": get_ranked_projects(profile),
+        "experience": compact_experience(profile.get("experience", [])),
+        "projects": compact_projects(get_ranked_projects(profile)),
     }
 
     system_prompt = """
 You are a factual company researcher.
 Use available evidence from search results.
 Rules:
+- Output must match schema field names exactly (company, stage, fit_score, etc.).
 - If unknown, explicitly set fields to Unknown or sparse defaults.
 - Provide fit analysis for candidate background.
 - Mention H1B/visa sponsorship in sponsorship field if present in data.
@@ -61,7 +62,12 @@ Rules:
         f"Candidate context: {candidate_context}\n\n"
         f"Search evidence:\n{search_context}"
     )
-    brief = generate_structured(CompanyBrief, system_prompt=system_prompt, user_prompt=user_prompt)
+    brief = generate_structured(
+        CompanyBrief,
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        max_tokens=2048,
+    )
 
     deduped: list[str] = []
     seen: set[str] = set()

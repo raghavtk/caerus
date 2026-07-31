@@ -62,8 +62,13 @@ def get_user_profile() -> dict[str, Any]:
     settings = get_settings()
     path = Path(settings.user_profile_path)
     if not path.exists():
-        logger.warning("user profile not found at {}", path)
-        return {}
+        example_path = Path("context/user_profile.example.yaml")
+        if path == Path("context/user_profile.yaml") and example_path.exists():
+            logger.info("user profile not found at {}; using example profile", path)
+            path = example_path
+        else:
+            logger.warning("user profile not found at {}", path)
+            return {}
 
     try:
         content = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
