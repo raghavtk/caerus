@@ -66,16 +66,17 @@ def parse_jd(url_or_text: str) -> ParsedJD:
     system_prompt = """
 You extract a structured job description from input text.
 Rules:
-- Output must match schema.
+- Output must match schema field names exactly.
+- When the text states a role and company (e.g. "Software Engineer at Cloudflare"), populate role and company.
 - domain_signals must be abstract tags from this set only:
   systems, networking, ml, database, security, backend, distributed, ai-infra, data-infra, devtools
 - Normalize seniority to exactly one of:
   New Grad, 0-2 yrs, 2-5 yrs, 5+ yrs, Staff+, Unknown
 - Use null for missing scalar fields; empty arrays for missing list fields.
-- Never invent facts.
+- Never invent facts not supported by the text.
 """
     user_prompt = f"Extract job details from this text:\n\n{raw_text[:12000]}"
-    parsed = generate_structured(ParsedJD, system_prompt=system_prompt, user_prompt=user_prompt)
+    parsed = generate_structured(ParsedJD, system_prompt=system_prompt, user_prompt=user_prompt, max_tokens=1024)
     parsed.raw_text = raw_text[:12000]
     if ats and not parsed.ats:
         parsed.ats = ats
