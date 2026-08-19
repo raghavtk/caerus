@@ -12,46 +12,6 @@ from skills.tracing import trace_generation
 T = TypeVar("T", bound=BaseModel)
 
 
-def generate_text(
-    *,
-    system_prompt: str,
-    user_prompt: str,
-    max_tokens: int = 2048,
-    trace_content: bool = True,
-) -> str:
-    """Generate one plain-text response without an implicit retry."""
-    from google import genai
-
-    settings = get_settings()
-    if not settings.gemini_api_key:
-        raise ValueError("GEMINI_API_KEY is not configured")
-
-    client = genai.Client(api_key=settings.gemini_api_key)
-    full_prompt = f"{system_prompt}\n\nUSER INPUT:\n{user_prompt}\n\nReturn plain text only."
-    response = client.models.generate_content(
-        model=settings.gemini_model,
-        contents=full_prompt,
-        config={"max_output_tokens": max_tokens},
-    )
-
-    text = (response.text or "").strip()
-    if not text:
-        raise ValueError("Gemini returned empty response")
-
-    trace_generation(
-        model=settings.gemini_model,
-        system_prompt=system_prompt if trace_content else "[redacted personal content]",
-        user_prompt=user_prompt if trace_content else "[redacted personal content]",
-        output_text=text if trace_content else "[redacted personal content]",
-        metadata={
-            "max_tokens": max_tokens,
-            "response_model": "text",
-            "content_redacted": not trace_content,
-        },
-    )
-    return text
-
-
 def generate_structured(
     response_model: type[T],
     *,
