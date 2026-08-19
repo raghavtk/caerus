@@ -32,7 +32,12 @@ def test_generate_text_returns_plain_text_and_redacts_trace(mock_settings, mock_
 
     assert result == "plain response"
     assert generate_content.call_count == 1
-    assert generate_content.call_args.kwargs["config"] == {"max_output_tokens": 321}
+    assert generate_content.call_args.kwargs["config"] == {
+        "system_instruction": "private system",
+        "max_output_tokens": 321,
+    }
+    assert "private system" not in generate_content.call_args.kwargs["contents"]
+    assert "private profile" in generate_content.call_args.kwargs["contents"]
     assert mock_trace.call_args.kwargs["system_prompt"] == "[redacted personal content]"
     assert mock_trace.call_args.kwargs["user_prompt"] == "[redacted personal content]"
     assert mock_trace.call_args.kwargs["output_text"] == "[redacted personal content]"
