@@ -27,11 +27,13 @@ def generate_text(
         raise ValueError("GEMINI_API_KEY is not configured")
 
     client = genai.Client(api_key=settings.gemini_api_key)
-    full_prompt = f"{system_prompt}\n\nUSER INPUT:\n{user_prompt}\n\nReturn plain text only."
     response = client.models.generate_content(
         model=settings.gemini_model,
-        contents=full_prompt,
-        config={"max_output_tokens": max_tokens},
+        contents=f"USER INPUT:\n{user_prompt}\n\nReturn plain text only.",
+        config={
+            "system_instruction": system_prompt,
+            "max_output_tokens": max_tokens,
+        },
     )
 
     text = (response.text or "").strip()
