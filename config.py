@@ -75,10 +75,14 @@ def get_user_profile() -> dict[str, Any]:
         logger.warning("user profile content is not a mapping at {}", path)
         return {}
 
+    explicit_projects = content.get("projects", [])
     grad_projects = content.get("grad_projects", [])
     undergrad_projects = content.get("undergrad_projects", [])
+    explicit_projects = explicit_projects if isinstance(explicit_projects, list) else []
+    grad_projects = grad_projects if isinstance(grad_projects, list) else []
+    undergrad_projects = undergrad_projects if isinstance(undergrad_projects, list) else []
     if grad_projects or undergrad_projects:
-        content["projects"] = [*grad_projects, *undergrad_projects]
+        content["projects"] = [*explicit_projects, *grad_projects, *undergrad_projects]
     return content
 
 
@@ -91,14 +95,17 @@ def _project_tier(project: dict[str, Any]) -> str:
 
 def _include_in_cover_letter(project: dict[str, Any]) -> bool:
     if "include_in_cover_letter" in project:
-        return bool(project["include_in_cover_letter"])
+        value = project["include_in_cover_letter"]
+        if isinstance(value, str):
+            return value.strip().casefold() in {"1", "true", "yes", "on"}
+        return bool(value)
     return _project_tier(project) != "C"
 
 
 def get_ranked_projects(profile: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     if profile is None:
         profile = get_user_profile()
-    projects = profile.get("projects", [])
+    projects = [project for project in profile.get("projects", []) if isinstance(project, dict)]
     return sorted(projects, key=lambda project: _TIER_ORDER.get(_project_tier(project), 1))
 
 
@@ -130,6 +137,7 @@ def compact_projects(projects: list[dict[str, Any]]) -> list[dict[str, Any]]:
             description = description[:220].rstrip() + "..."
         compact.append(
             {
+                "id": project.get("id"),
                 "name": project.get("name"),
                 "tier": project.get("tier"),
                 "stack": project.get("stack"),

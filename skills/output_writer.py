@@ -107,7 +107,30 @@ def _write_resume_report(package: ApplicationPackage, out_dir: Path) -> Path:
         "",
         "## Talking Points",
         *[f"- {x}" for x in sel.talking_points],
+        "",
+        "## Recommended Projects",
     ]
+    for project in sel.project_recommendations:
+        lines.extend(
+            [
+                f"### {project.name} ({project.score}/100)",
+                f"- Project ID: {project.project_id}",
+                f"- Repository: {project.repository_url or 'Not provided'}",
+                f"- Source Ref: {project.source_ref or 'Not provided'}",
+                f"- Why: {project.reason}",
+                "- Score Breakdown: "
+                f"technology {project.technology_score}/40, "
+                f"domains {project.domain_score}/25, "
+                f"company/role {project.company_role_score}/20, "
+                f"tier {project.tier_score}/10, "
+                f"recency {project.recency_score}/5",
+                f"- Required Matches: {', '.join(project.matched_required) or 'None'}",
+                f"- Preferred Matches: {', '.join(project.matched_preferred) or 'None'}",
+                f"- Domain Matches: {', '.join(project.matched_domains) or 'None'}",
+                f"- Company/Role Matches: {', '.join(project.matched_company_signals) or 'None'}",
+                "",
+            ]
+        )
     path.write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
     return path
 

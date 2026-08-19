@@ -41,6 +41,24 @@ class ParsedJD(BaseModel):
     raw_text: str = ""
 
 
+class ProjectRecommendation(BaseModel):
+    project_id: str
+    name: str
+    repository_url: str | None = None
+    source_ref: str | None = None
+    score: int = Field(ge=0, le=100)
+    technology_score: int = Field(default=0, ge=0, le=40)
+    domain_score: int = Field(default=0, ge=0, le=25)
+    company_role_score: int = Field(default=0, ge=0, le=20)
+    tier_score: int = Field(default=0, ge=0, le=10)
+    recency_score: int = Field(default=0, ge=0, le=5)
+    reason: str
+    matched_required: list[str] = Field(default_factory=list)
+    matched_preferred: list[str] = Field(default_factory=list)
+    matched_domains: list[str] = Field(default_factory=list)
+    matched_company_signals: list[str] = Field(default_factory=list)
+
+
 class ResumeSelection(BaseModel):
     variant: ResumeVariant = ResumeVariant.GENERAL
     grade: str = "C"
@@ -49,6 +67,7 @@ class ResumeSelection(BaseModel):
     gaps: list[str] = Field(default_factory=list)
     talking_points: list[str] = Field(default_factory=list)
     selected_resume_path: str | None = None
+    project_recommendations: list[ProjectRecommendation] = Field(default_factory=list)
 
 
 class CompanyBrief(BaseModel):

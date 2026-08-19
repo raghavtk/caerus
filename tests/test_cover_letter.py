@@ -16,7 +16,14 @@ from agents.cover_letter import (
     normalize_cover_letter,
     validate_cover_letter,
 )
-from schemas.models import CompanyBrief, CompanyStage, ParsedJD, ResumeSelection, ResumeVariant
+from schemas.models import (
+    CompanyBrief,
+    CompanyStage,
+    ParsedJD,
+    ProjectRecommendation,
+    ResumeSelection,
+    ResumeVariant,
+)
 
 
 def _inputs() -> tuple[ParsedJD, CompanyBrief, ResumeSelection, dict]:
@@ -162,6 +169,109 @@ def test_prompt_serializes_yaml_native_dates() -> None:
     payload = json.loads(_build_user_prompt(jd, brief, selection, profile))
 
     assert payload["candidate"]["experience"][0]["dates"] == "2026-08-19"
+
+
+def test_prompt_and_validator_use_only_selected_cover_letter_projects() -> None:
+    jd, brief, selection, profile = _inputs()
+    profile["experience"] = []
+    profile["projects"] = [
+        {"id": project_id, "name": name, "include_in_cover_letter": True}
+        for project_id, name in (("one", "One"), ("two", "Two"), ("three", "Three"), ("four", "Four"))
+    ]
+    selection.project_recommendations = [
+        ProjectRecommendation(project_id=project_id, name=name, score=score, reason="match")
+        for project_id, name, score in (("one", "One", 90), ("two", "Two", 80), ("three", "Three", 70))
+    ]
+
+    payload = json.loads(_build_user_prompt(jd, brief, selection, profile))
+    assert [project["name"] for project in payload["candidate"]["projects"]] == ["One", "Two", "Three"]
+    assert "Four" not in json.dumps(payload)
+
+    body = _valid_body().replace("Caerus", "Four")
+    violations = validate_cover_letter(body, jd=jd, profile=profile, resume_selection=selection)
+    assert any(violation.code == "candidate_grounding" for violation in violations)
+
+
+def test_selected_projects_follow_recommendation_ids_and_order() -> None:
+    jd, brief, selection, profile = _inputs()
+    profile["projects"] = [
+        {"id": "a", "name": "Duplicate", "include_in_cover_letter": True},
+        {"id": "b", "name": "Duplicate", "include_in_cover_letter": True},
+        {"id": "c", "name": "Third", "include_in_cover_letter": True},
+    ]
+    selection.project_recommendations = [
+        ProjectRecommendation(project_id="c", name="Third", score=90, reason="match"),
+        ProjectRecommendation(project_id="b", name="Duplicate", score=80, reason="match"),
+    ]
+
+    payload = json.loads(_build_user_prompt(jd, brief, selection, profile))
+
+    assert [project["name"] for project in payload["candidate"]["projects"]] == [
+        "Third",
+        "Duplicate",
+    ]
+
+
+def test_recommendations_require_project_grounding_not_experience_only() -> None:
+    jd, _, selection, profile = _inputs()
+    selection.project_recommendations = [
+        ProjectRecommendation(project_id="caerus", name="Caerus", score=90, reason="match")
+    ]
+    body = _valid_body().replace("Caerus", "Example Labs")
+
+    violations = validate_cover_letter(body, jd=jd, profile=profile, resume_selection=selection)
+
+    assert any(violation.code == "candidate_grounding" for violation in violations)
+
+
+def test_hidden_recommendation_does_not_resolve_to_visible_duplicate_name() -> None:
+    jd, brief, selection, profile = _inputs()
+    profile["projects"] = [
+        {"id": "hidden", "name": "Duplicate", "include_in_cover_letter": False},
+        {"id": "visible", "name": "Duplicate", "include_in_cover_letter": True},
+    ]
+    selection.project_recommendations = [
+        ProjectRecommendation(project_id="hidden", name="Duplicate", score=90, reason="hidden"),
+        ProjectRecommendation(project_id="visible", name="Duplicate", score=80, reason="visible"),
+    ]
+
+    payload = json.loads(_build_user_prompt(jd, brief, selection, profile))
+
+    assert [project["id"] for project in payload["candidate"]["projects"]] == ["visible"]
+    assert [item["project_id"] for item in payload["resume_selection"]["project_recommendations"]] == [
+        "visible"
+    ]
+
+
+def test_all_hidden_recommendations_fall_back_to_experience_grounding() -> None:
+    jd, _, selection, profile = _inputs()
+    profile["projects"] = [
+        {"id": "hidden", "name": "Hidden", "include_in_cover_letter": False}
+    ]
+    selection.project_recommendations = [
+        ProjectRecommendation(project_id="hidden", name="Hidden", score=90, reason="hidden")
+    ]
+    body = _valid_body().replace("Caerus", "Example Labs")
+
+    violations = validate_cover_letter(body, jd=jd, profile=profile, resume_selection=selection)
+
+    assert not any(violation.code in {"candidate_evidence_missing", "candidate_grounding"} for violation in violations)
+
+
+def test_legacy_duplicate_names_do_not_cross_resolve_hidden_project() -> None:
+    jd, brief, selection, profile = _inputs()
+    profile["projects"] = [
+        {"name": "Duplicate", "include_in_cover_letter": False, "stack": ["Python"]},
+        {"name": "Duplicate", "include_in_cover_letter": True, "stack": ["Go"]},
+    ]
+    selection.project_recommendations = [
+        ProjectRecommendation(project_id="duplicate", name="Duplicate", score=90, reason="hidden")
+    ]
+
+    payload = json.loads(_build_user_prompt(jd, brief, selection, profile))
+
+    assert payload["candidate"]["projects"] == []
+    assert payload["resume_selection"]["project_recommendations"] == []
 
 
 def test_hook_summary_preserves_full_opening_with_abbreviations() -> None:
