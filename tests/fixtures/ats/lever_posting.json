@@ -1,0 +1,13 @@
+{
+  "id": "abc123",
+  "text": "Database Engineer",
+  "company": "Example Systems",
+  "categories": {"location": "Remote - US", "team": "Data Platform", "department": "Engineering", "commitment": "Full-time"},
+  "workplaceType": "remote",
+  "descriptionPlain": "About the role\nBuild dependable storage systems for customers.",
+  "openingPlain": "About the role\nBuild dependable storage systems for customers.",
+  "lists": [{"text": "Requirements", "content": "<ul><li>PostgreSQL</li><li>Operating systems</li></ul>"}, {"text": "Nice to have", "contentPlain": "Distributed systems experience\nRETAIN-ME-LATE-REQUIREMENT"}],
+  "additionalPlain": "Example Systems is an equal opportunity employer.",
+  "salaryDescriptionPlain": "$160,000 - $200,000 USD",
+  "salaryRange": {"currency": "USD", "interval": "year", "min": 160000, "max": 200000}
+}
