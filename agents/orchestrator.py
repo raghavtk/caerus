@@ -43,7 +43,7 @@ def orchestrate(url_or_text: str, skip_notion: bool = False) -> ApplicationPacka
         logger.info("step 4/6: cover letter generation")
         with trace.step("cover_letter") as step:
             letter = generate_cover_letter(jd, brief, selection)
-            step.set_output({"word_count": letter.word_count, "hook": letter.hook_summary})
+            step.set_output({"word_count": letter.word_count})
 
         package = ApplicationPackage(
             jd=jd,

@@ -96,7 +96,8 @@ def _include_in_cover_letter(project: dict[str, Any]) -> bool:
 
 
 def get_ranked_projects(profile: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-    profile = profile or get_user_profile()
+    if profile is None:
+        profile = get_user_profile()
     projects = profile.get("projects", [])
     return sorted(projects, key=lambda project: _TIER_ORDER.get(_project_tier(project), 1))
 
