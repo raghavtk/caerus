@@ -37,22 +37,56 @@ skills:
 
 # tier: A = lead with, B = supporting, C = low-signal
 # include_in_cover_letter: whether agents may cite this in cover letters
+# resume_eligible: whether the project may be recommended for a resume
+# source_ref: optional branch, tag, or commit when a repository has multiple project variants
 
 grad_projects:
-  - name: Example Agent Project
+  - id: example-agent-project
+    name: Example Agent Project
+    repository_url: https://github.com/example/example-agent-project
+    source_ref: main
     tier: A
     include_in_cover_letter: true
+    resume_eligible: true
     stack: [Python, Typer]
+    domains: [backend, ai-infra]
+    company_signals: [developer tools]
+    role_signals: [software engineer]
+    start_date: 2026-01-01
+    end_date: present
     dates: "2026 - Present"
     description: "Short description of a strong recent project."
+    evidence:
+      - "Built a typed agent workflow with deterministic validation."
 
 undergrad_projects:
-  - name: Example Systems Project
+  - id: example-systems-project
+    name: Example Systems Project
+    repository_url: https://github.com/example/example-systems-project
     tier: A
     include_in_cover_letter: true
+    resume_eligible: true
     stack: [Go]
+    domains: [systems]
+    start_date: 2022-01-01
+    end_date: 2022-12-31
     dates: "2022"
     description: "Short description of a strong undergrad project."
+    evidence:
+      - "Implemented a concurrent systems component in Go."
+
+  # Model branch combinations as separate project IDs when their work differs.
+  - id: example-nndl-experiment-branch
+    name: Example NNDL Experiment
+    repository_url: https://github.com/example/nndl-team-project
+    source_ref: experiment-branch
+    tier: B
+    include_in_cover_letter: true
+    resume_eligible: true
+    stack: [Python, PyTorch]
+    domains: [ml]
+    dates: "2025"
+    description: "A branch-specific neural-network experiment."
 
 publications: []
 

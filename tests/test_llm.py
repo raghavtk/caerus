@@ -5,8 +5,13 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pydantic import BaseModel
 
-from llm import generate_text
+from llm import generate_structured, generate_text
+
+
+class _StructuredResponse(BaseModel):
+    answer: str
 
 
 def _fake_google(response_text: str) -> tuple[object, MagicMock]:
@@ -54,3 +59,41 @@ def test_generate_text_rejects_empty_response_without_retry(mock_settings) -> No
             generate_text(system_prompt="system", user_prompt="user")
 
     assert generate_content.call_count == 1
+
+
+@patch("llm.trace_generation")
+@patch("llm.get_settings")
+def test_generate_structured_uses_dedicated_system_instruction(mock_settings, mock_trace) -> None:
+    mock_settings.return_value = SimpleNamespace(gemini_api_key="test", gemini_model="gemini-test")
+    google, generate_content = _fake_google('{"answer": "ok"}')
+
+    with patch.dict(sys.modules, {"google": google}):
+        result = generate_structured(
+            _StructuredResponse,
+            system_prompt="trusted rules",
+            user_prompt='{"untrusted": "data"}',
+            max_tokens=123,
+        )
+
+    assert result.answer == "ok"
+    assert generate_content.call_args.kwargs["config"]["system_instruction"] == "trusted rules"
+    assert "trusted rules" not in generate_content.call_args.kwargs["contents"]
+
+
+@patch("llm.trace_generation")
+@patch("llm.get_settings")
+def test_generate_structured_can_redact_trace_content(mock_settings, mock_trace) -> None:
+    mock_settings.return_value = SimpleNamespace(gemini_api_key="test", gemini_model="gemini-test")
+    google, _ = _fake_google('{"answer": "private output"}')
+
+    with patch.dict(sys.modules, {"google": google}):
+        generate_structured(
+            _StructuredResponse,
+            system_prompt="private system",
+            user_prompt="private profile",
+        )
+
+    assert mock_trace.call_args.kwargs["system_prompt"] == "[redacted personal content]"
+    assert mock_trace.call_args.kwargs["user_prompt"] == "[redacted personal content]"
+    assert mock_trace.call_args.kwargs["output_text"] == "[redacted personal content]"
+    assert mock_trace.call_args.kwargs["metadata"]["content_redacted"] is True
