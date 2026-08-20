@@ -91,7 +91,6 @@ def test_generate_structured_can_redact_trace_content(mock_settings, mock_trace)
             _StructuredResponse,
             system_prompt="private system",
             user_prompt="private profile",
-            trace_content=False,
         )
 
     assert mock_trace.call_args.kwargs["system_prompt"] == "[redacted personal content]"

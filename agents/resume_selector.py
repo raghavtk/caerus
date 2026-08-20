@@ -81,6 +81,10 @@ def _matched_labels(values: list[str], project_terms: set[str]) -> list[str]:
     return matched
 
 
+def _unique_labels(values: list[str]) -> list[str]:
+    return list(dict.fromkeys(value for value in values if str(value).strip()))
+
+
 def _coverage(signal_terms: set[str], project_terms: set[str], weight: float) -> float:
     if not signal_terms:
         return 0.0
@@ -180,7 +184,9 @@ def rank_projects(
     role_terms = _terms([jd.role or ""])
 
     ranked: list[tuple[int, int, ProjectRecommendation]] = []
-    projects = [project for project in profile.get("projects", []) if isinstance(project, dict)]
+    raw_projects = profile.get("projects")
+    projects = raw_projects if isinstance(raw_projects, list) else []
+    projects = [project for project in projects if isinstance(project, dict)]
     for original_index, project in enumerate(projects):
         if _is_false(project.get("resume_eligible")):
             continue
@@ -223,7 +229,9 @@ def rank_projects(
             matched_required=_matched_labels(jd.requirements, project_terms),
             matched_preferred=_matched_labels(jd.preferred, project_terms),
             matched_domains=_matched_labels(jd.domain_signals, project_terms),
-            matched_company_signals=sorted((company_terms | role_terms) & project_terms),
+            matched_company_signals=_unique_labels(
+                _matched_labels([*company_values, jd.role or ""], project_terms)
+            ),
         )
         recommendation.reason = _reason_for(recommendation)
         ranked.append((score, original_index, recommendation))

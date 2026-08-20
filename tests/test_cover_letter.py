@@ -171,6 +171,19 @@ def test_prompt_serializes_yaml_native_dates() -> None:
     assert payload["candidate"]["experience"][0]["dates"] == "2026-08-19"
 
 
+def test_prompt_treats_null_projects_as_empty() -> None:
+    jd, brief, selection, profile = _inputs()
+    profile["projects"] = None
+    selection.project_recommendations = [
+        ProjectRecommendation(project_id="missing", name="Missing", score=90, reason="match")
+    ]
+
+    payload = json.loads(_build_user_prompt(jd, brief, selection, profile))
+
+    assert payload["candidate"]["projects"] == []
+    assert payload["resume_selection"]["project_recommendations"] == []
+
+
 def test_prompt_and_validator_use_only_selected_cover_letter_projects() -> None:
     jd, brief, selection, profile = _inputs()
     profile["experience"] = []
@@ -210,6 +223,20 @@ def test_selected_projects_follow_recommendation_ids_and_order() -> None:
         "Third",
         "Duplicate",
     ]
+
+
+def test_selected_projects_trim_legacy_recommendation_keys() -> None:
+    jd, brief, selection, profile = _inputs()
+    profile["projects"] = [
+        {"id": "my-id", "name": "Project", "include_in_cover_letter": True}
+    ]
+    selection.project_recommendations = [
+        ProjectRecommendation(project_id=" my-id ", name=" Project ", score=90, reason="match")
+    ]
+
+    payload = json.loads(_build_user_prompt(jd, brief, selection, profile))
+
+    assert [project["id"] for project in payload["candidate"]["projects"]] == ["my-id"]
 
 
 def test_recommendations_require_project_grounding_not_experience_only() -> None:

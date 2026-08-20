@@ -92,6 +92,7 @@ def test_rank_projects_exact_full_score_and_breakdown() -> None:
     assert (match.tier_score, match.recency_score) == (10, 5)
     assert match.matched_required == ["Python", "Kubernetes"]
     assert match.matched_preferred == ["Go"]
+    assert match.matched_company_signals == ["Acme", "cloud", "Software Engineer"]
 
 
 def test_required_and_preferred_weights_are_30_and_10() -> None:
@@ -184,6 +185,10 @@ def test_rank_projects_skips_malformed_and_unnamed_entries() -> None:
     profile = {"projects": ["bad", None, {}, {"id": "valid", "name": "Valid", "tier": "C"}]}
     result = rank_projects(profile, ParsedJD(), today=date(2026, 1, 1))
     assert [item.project_id for item in result] == ["valid"]
+
+
+def test_rank_projects_treats_null_projects_as_empty() -> None:
+    assert rank_projects({"projects": None}, ParsedJD(), today=date(2026, 1, 1)) == []
 
 
 @patch("agents.resume_selector.get_settings", return_value=SimpleNamespace(resumes_dir="resumes"))

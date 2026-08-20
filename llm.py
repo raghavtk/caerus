@@ -60,7 +60,7 @@ def generate_structured(
     system_prompt: str,
     user_prompt: str,
     max_tokens: int = 2048,
-    trace_content: bool = True,
+    trace_content: bool = False,
 ) -> T:
     from google import genai
 

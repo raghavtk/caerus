@@ -88,41 +88,49 @@ def _json_default(value: object) -> str:
     raise TypeError(f"unsupported evidence type: {type(value).__name__}")
 
 
+def _match_key(value: object) -> str:
+    return str(value or "").strip().casefold()
+
+
 def _selected_cover_projects(
     profile: dict[str, Any], resume_selection: ResumeSelection | None
 ) -> list[dict[str, Any]]:
     eligible = get_cover_letter_projects(profile)
     if resume_selection is None or not resume_selection.project_recommendations:
         return eligible[:6]
+    raw_projects = profile.get("projects")
+    all_projects = raw_projects if isinstance(raw_projects, list) else []
     all_project_ids = {
-        str(project.get("id") or "").casefold()
-        for project in profile.get("projects", [])
+        _match_key(project.get("id"))
+        for project in all_projects
         if isinstance(project, dict) and str(project.get("id") or "").strip()
     }
     all_name_counts: dict[str, int] = {}
-    for project in profile.get("projects", []):
+    for project in all_projects:
         if isinstance(project, dict):
-            name = str(project.get("name") or "").casefold()
+            name = _match_key(project.get("name"))
             if name:
                 all_name_counts[name] = all_name_counts.get(name, 0) + 1
     by_id = {
-        str(project.get("id") or "").casefold(): project
+        _match_key(project.get("id")): project
         for project in eligible
         if str(project.get("id") or "").strip()
     }
     by_name: dict[str, list[dict[str, Any]]] = {}
     for project in eligible:
-        by_name.setdefault(str(project.get("name") or "").casefold(), []).append(project)
+        by_name.setdefault(_match_key(project.get("name")), []).append(project)
     selected: list[dict[str, Any]] = []
     selected_ids: set[int] = set()
     for recommendation in resume_selection.project_recommendations[:3]:
-        project = by_id.get(recommendation.project_id.casefold())
-        if project is None and recommendation.project_id.casefold() not in all_project_ids:
-            name_matches = by_name.get(recommendation.name.casefold(), [])
+        recommendation_id = _match_key(recommendation.project_id)
+        recommendation_name = _match_key(recommendation.name)
+        project = by_id.get(recommendation_id)
+        if project is None and recommendation_id not in all_project_ids:
+            name_matches = by_name.get(recommendation_name, [])
             project = (
                 name_matches[0]
                 if len(name_matches) == 1
-                and all_name_counts.get(recommendation.name.casefold()) == 1
+                and all_name_counts.get(recommendation_name) == 1
                 else None
             )
         if project is not None and id(project) not in selected_ids:
@@ -235,8 +243,8 @@ def _build_user_prompt(
 ) -> str:
     voice_profile = profile.get("voice_profile") or {}
     selected_projects = _selected_cover_projects(profile, resume_selection)
-    selected_project_ids = {str(project.get("id") or "").casefold() for project in selected_projects}
-    selected_project_names = {str(project.get("name") or "").casefold() for project in selected_projects}
+    selected_project_ids = {_match_key(project.get("id")) for project in selected_projects}
+    selected_project_names = {_match_key(project.get("name")) for project in selected_projects}
     education = [
         {"institution": item.get("institution"), "degree": item.get("degree")}
         for item in profile.get("education", [])[:2]
@@ -282,15 +290,19 @@ def _build_user_prompt(
                     "reason": item.reason,
                 }
                 for item in resume_selection.project_recommendations[:3]
-                if item.project_id.casefold() in selected_project_ids
+                if _match_key(item.project_id) in selected_project_ids
                 or (
-                    item.project_id.casefold()
+                    _match_key(item.project_id)
                     not in {
-                        str(project.get("id") or "").casefold()
-                        for project in profile.get("projects", [])
+                        _match_key(project.get("id"))
+                        for project in (
+                            profile.get("projects")
+                            if isinstance(profile.get("projects"), list)
+                            else []
+                        )
                         if isinstance(project, dict) and str(project.get("id") or "").strip()
                     }
-                    and item.name.casefold() in selected_project_names
+                    and _match_key(item.name) in selected_project_names
                 )
             ],
         },

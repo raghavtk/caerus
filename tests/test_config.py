@@ -21,6 +21,10 @@ def test_ranked_projects_skips_malformed_entries() -> None:
     assert config.get_ranked_projects(profile) == [{"name": "Valid", "tier": "A"}]
 
 
+def test_ranked_projects_treats_null_as_empty() -> None:
+    assert config.get_ranked_projects({"projects": None}) == []
+
+
 def test_user_profile_merges_explicit_grad_and_undergrad_projects(tmp_path) -> None:
     path = tmp_path / "profile.yaml"
     path.write_text(
