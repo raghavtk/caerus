@@ -66,24 +66,53 @@ def _write_company_brief(package: ApplicationPackage, out_dir: Path) -> Path:
     brief = package.company_brief
     lines = [
         f"# Company Brief: {brief.company}",
-        f"- Stage: {brief.stage}",
+        f"- Research Status: {brief.research_status.value}",
+        f"- Stage: {brief.stage.value}",
         f"- Fit Score: {brief.fit_score}",
         f"- Sponsorship: {brief.sponsorship}",
         "",
+        "## Role Context",
+        *([f"- {x}" for x in brief.role_context] or ["- Unknown"]),
+        "",
+        "## Recent Developments",
+        *([f"- {x}" for x in brief.recent_developments] or ["- Unknown"]),
+        "",
         "## Strong Overlaps",
-        *[f"- {x}" for x in brief.strong_overlaps],
+        *([f"- {x}" for x in brief.strong_overlaps] or ["- Unknown"]),
+        "",
+        "## Candidate Overlaps",
+        *([f"- {x}" for x in brief.candidate_overlaps] or ["- Unknown"]),
         "",
         "## Potential Angles",
-        *[f"- {x}" for x in brief.potential_angles],
+        *([f"- {x}" for x in brief.potential_angles] or ["- Unknown"]),
         "",
         "## Tech Highlights",
-        *[f"- {x}" for x in brief.tech_highlights],
+        *([f"- {x}" for x in brief.tech_highlights] or ["- Unknown"]),
         "",
         "## Culture Notes",
-        *[f"- {x}" for x in brief.culture_notes],
+        *([f"- {x}" for x in brief.culture_notes] or ["- Unknown"]),
+        "",
+        "## Talking Points",
+        *([f"- {x}" for x in brief.talking_points] or ["- Unknown"]),
+        "",
+        "## Concerns or Unknowns",
+        *([f"- {x}" for x in brief.concerns_or_unknowns] or ["- Unknown"]),
+        "",
+        "## Evidence",
+        *(
+            [f"- {claim.statement} [{', '.join(claim.source_ids)}]" for claim in brief.evidence]
+            or ["- Unknown"]
+        ),
         "",
         "## Sources",
-        *[f"- {x}" for x in brief.sources],
+        *(
+            [
+                f"- {source.id} — {source.title}"
+                f"{f' ({source.published_date})' if source.published_date else ''} — {source.url}"
+                for source in brief.sources
+            ]
+            or ["- Unknown"]
+        ),
     ]
     path.write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
     return path
