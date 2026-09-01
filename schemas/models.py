@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ResumeVariant(str, Enum):
@@ -19,6 +19,27 @@ class CompanyStage(str, Enum):
     PUBLIC = "Public"
     ENTERPRISE = "Enterprise"
     UNKNOWN = "Unknown"
+
+
+class ResearchStatus(str, Enum):
+    COMPLETE = "complete"
+    PARTIAL = "partial"
+    UNAVAILABLE = "unavailable"
+
+
+class ResearchSource(BaseModel):
+    id: str
+    title: str
+    url: str
+    published_date: str | None = None
+    snippet: str | None = None
+    query_tags: list[str] = Field(default_factory=list)
+
+
+class EvidenceClaim(BaseModel):
+    category: str
+    statement: str
+    source_ids: list[str] = Field(min_length=1)
 
 
 class ApplicationStatus(str, Enum):
@@ -73,13 +94,33 @@ class ResumeSelection(BaseModel):
 class CompanyBrief(BaseModel):
     company: str = "Unknown"
     stage: CompanyStage = CompanyStage.UNKNOWN
-    fit_score: int = 50
+    fit_score: int = Field(default=0, ge=0, le=100)
     strong_overlaps: list[str] = Field(default_factory=list)
     potential_angles: list[str] = Field(default_factory=list)
     sponsorship: str = "Unknown"
     tech_highlights: list[str] = Field(default_factory=list)
     culture_notes: list[str] = Field(default_factory=list)
-    sources: list[str] = Field(default_factory=list)
+    research_status: ResearchStatus = ResearchStatus.PARTIAL
+    role_context: list[str] = Field(default_factory=list)
+    recent_developments: list[str] = Field(default_factory=list)
+    candidate_overlaps: list[str] = Field(default_factory=list)
+    concerns_or_unknowns: list[str] = Field(default_factory=list)
+    talking_points: list[str] = Field(default_factory=list)
+    evidence: list[EvidenceClaim] = Field(default_factory=list)
+    sources: list[ResearchSource] = Field(default_factory=list)
+
+    @field_validator("sources", mode="before")
+    @classmethod
+    def _upgrade_legacy_sources(cls, value: object) -> object:
+        if not isinstance(value, list):
+            return []
+        upgraded: list[object] = []
+        for index, item in enumerate(value, start=1):
+            if isinstance(item, str):
+                upgraded.append({"id": f"S{index}", "title": item, "url": item})
+            else:
+                upgraded.append(item)
+        return upgraded
 
 
 class CoverLetter(BaseModel):
