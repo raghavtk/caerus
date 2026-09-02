@@ -4,7 +4,9 @@ from pathlib import Path
 
 import pytest
 
+import config as app_config
 from skills.agent_eval import LIVE_ENV_VAR, live_evals_allowed
+from skills import tracing
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 JD_FIXTURES_DIR = FIXTURES_DIR / "jds"
@@ -26,6 +28,26 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     if live_evals_allowed():
         return
     items[:] = [item for item in items if "live" not in item.keywords]
+
+
+@pytest.fixture(autouse=True)
+def disable_external_tracing_for_offline_tests(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+):
+    """Prevent local .env credentials from exporting traces during offline tests."""
+    if "live" in request.node.keywords and live_evals_allowed():
+        yield
+        return
+
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "")
+    app_config.get_settings.cache_clear()
+    tracing._LANGFUSE_CLIENT = None
+    try:
+        yield
+    finally:
+        tracing._LANGFUSE_CLIENT = None
+        app_config.get_settings.cache_clear()
 
 
 @pytest.fixture

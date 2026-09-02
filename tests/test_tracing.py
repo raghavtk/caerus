@@ -62,6 +62,11 @@ def test_pipeline_trace_noop_when_disabled() -> None:
         assert trace.trace_url is None
 
 
+def test_offline_test_fixture_blocks_env_backed_trace_initialization() -> None:
+    assert tracing.get_settings().langfuse_enabled is False
+    assert tracing._get_langfuse_client() is None
+
+
 def test_pipeline_trace_creates_nested_spans() -> None:
     mock_client = MagicMock()
     mock_client.get_current_trace_id.return_value = "trace-123"

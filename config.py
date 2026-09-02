@@ -6,6 +6,7 @@ from typing import Any
 
 import yaml
 from loguru import logger
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,6 +18,11 @@ class Settings(BaseSettings):
 
     serper_api_key: str | None = None
     tavily_api_key: str | None = None
+    search_provider: str = "auto"
+    search_fallback_on_empty: bool = True
+    search_timeout_seconds: int = Field(default=10, ge=1, le=60)
+    search_max_attempts: int = Field(default=2, ge=1, le=3)
+    search_concurrency: int = Field(default=3, ge=1, le=5)
 
     notion_token: str | None = None
     notion_database_id: str | None = None
@@ -35,13 +41,15 @@ class Settings(BaseSettings):
     def notion_via_mcp(self) -> bool:
         return bool(self.notion_mcp_url)
 
-    @property
-    def search_provider(self) -> str:
-        if self.serper_api_key:
-            return "serper"
-        if self.tavily_api_key:
-            return "tavily"
-        return "none"
+    @field_validator("search_provider", mode="before")
+    @classmethod
+    def validate_search_provider(cls, value: object) -> str:
+        if not isinstance(value, str):
+            raise ValueError("search_provider must be one of: auto, serper, tavily")
+        provider = value.strip().casefold()
+        if provider not in {"auto", "serper", "tavily"}:
+            raise ValueError("search_provider must be one of: auto, serper, tavily")
+        return provider
 
     @property
     def langfuse_enabled(self) -> bool:

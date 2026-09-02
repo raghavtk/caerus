@@ -3,19 +3,22 @@ from __future__ import annotations
 import json
 import re
 from collections import Counter
-from datetime import date
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextvars import copy_context
+from datetime import date, datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import urlsplit
 
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from config import compact_projects, get_ranked_projects, get_user_profile
+from config import compact_projects, get_ranked_projects, get_settings, get_user_profile
 from llm import generate_structured
 from schemas.models import CompanyBrief, CompanyStage, EvidenceClaim, ParsedJD, ResearchSource, ResearchStatus
-from skills.search import web_search
+from skills.search import SearchOutcome, SearchResponse, SearchResult, canonicalize_url, web_search
+from skills.tracing import trace_span
 
-_TRACKING_PARAMS = {"fbclid", "gclid", "mc_cid", "mc_eid", "ref", "source"}
 _EXTERNAL_FIELDS = {
     "strong_overlaps": "strong_overlap",
     "potential_angles": "potential_angle",
@@ -25,6 +28,21 @@ _EXTERNAL_FIELDS = {
     "culture_notes": "culture",
     "candidate_overlaps": "candidate_overlap",
     "talking_points": "talking_point",
+}
+_COMPANY_PREFIXES = {"the"}
+_COMPANY_SUFFIXES = {
+    "co",
+    "company",
+    "corp",
+    "corporation",
+    "inc",
+    "incorporated",
+    "limited",
+    "llc",
+    "llp",
+    "lp",
+    "ltd",
+    "plc",
 }
 
 
@@ -56,30 +74,6 @@ def _build_search_queries(company: str, role: str, jd: ParsedJD | None = None) -
     ]
 
 
-def _canonical_url(value: object) -> str | None:
-    try:
-        parsed = urlsplit(str(value).strip())
-        default_port = (parsed.scheme.casefold(), parsed.port) in {("http", 80), ("https", 443)}
-        port = f":{parsed.port}" if parsed.port and not default_port else ""
-    except ValueError:
-        return None
-    if parsed.scheme.casefold() not in {"http", "https"} or not parsed.hostname:
-        return None
-    path = re.sub(r"/{2,}", "/", parsed.path or "/")
-    if path != "/":
-        path = path.rstrip("/")
-    query = sorted(
-        [
-        (key, val)
-        for key, val in parse_qsl(parsed.query, keep_blank_values=True)
-        if not key.casefold().startswith("utm_") and key.casefold() not in _TRACKING_PARAMS
-        ]
-    )
-    return urlunsplit(
-        (parsed.scheme.casefold(), parsed.hostname.casefold() + port, path, urlencode(query), "")
-    )
-
-
 def _domain_bucket(host: str) -> str:
     labels = host.casefold().strip(".").split(".")
     if len(labels) <= 2:
@@ -90,37 +84,180 @@ def _domain_bucket(host: str) -> str:
     return ".".join(labels[-2:])
 
 
-def _normalize_sources(tagged_results: list[tuple[str, object]]) -> list[ResearchSource]:
+def _company_domain_match(company: str, host: str) -> bool:
+    """Match a normalized company name to the complete registered-domain label."""
+
+    def normalized_tokens(value: str) -> list[str]:
+        tokens = re.findall(r"[a-z0-9]+", value.casefold())
+        while tokens and tokens[0] in _COMPANY_PREFIXES:
+            tokens.pop(0)
+        while tokens and tokens[-1] in _COMPANY_SUFFIXES:
+            tokens.pop()
+        return tokens
+
+    company_key = "".join(normalized_tokens(company))
+    registered_domain = _domain_bucket(host)
+    registered_label = registered_domain.split(".", 1)[0]
+    domain_key = "".join(normalized_tokens(registered_label))
+    return bool(company_key and domain_key and company_key == domain_key)
+
+
+def _published_timestamp(value: str | None) -> float | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        try:
+            parsed = parsedate_to_datetime(value)
+        except (TypeError, ValueError, OverflowError):
+            year_match = re.search(r"\b(19|20)\d{2}\b", value)
+            return (
+                datetime(int(year_match.group()), 1, 1, tzinfo=timezone.utc).timestamp()
+                if year_match
+                else None
+            )
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.timestamp()
+
+
+def _result_fields(raw: object) -> tuple[str, str, str | None, str | None]:
+    if isinstance(raw, SearchResult):
+        return raw.title, raw.snippet, raw.url, raw.published_date
+    if not isinstance(raw, dict):
+        return "", "", None, None
+    return (
+        str(raw.get("title") or "").strip(),
+        str(raw.get("snippet") or "").strip(),
+        canonicalize_url(raw.get("url")),
+        str(raw.get("published_date") or raw.get("date") or "").strip() or None,
+    )
+
+
+def _rank_tagged_results(
+    tagged_results: list[tuple[str, object]], company: str
+) -> list[tuple[str, object]]:
+    tag_order = {
+        tag: index
+        for index, tag in enumerate(dict.fromkeys(tag for tag, _ in tagged_results))
+    }
+
+    def ranking(item: tuple[int, tuple[str, object]]) -> tuple[int, float, int]:
+        index, (tag, raw) = item
+        title, _, url, published_date = _result_fields(raw)
+        parsed = urlsplit(url or "")
+        host = parsed.hostname or ""
+        official = _company_domain_match(company, host)
+        if tag == "sponsorship":
+            is_government = "gov" in host.casefold().split(".")
+            career_or_policy = official and any(
+                term in f"{parsed.path} {title}".casefold()
+                for term in ("career", "job", "immigration", "visa", "policy")
+            )
+            category_rank = 0 if is_government else 1 if career_or_policy else 2
+            return category_rank, 0.0, index
+        if tag in {"product_engineering", "team_technology", "culture"}:
+            return 0 if official else 1, 0.0, index
+        if tag == "recent_developments":
+            timestamp = _published_timestamp(published_date)
+            return 0 if timestamp is not None else 1, -(timestamp or 0.0), index
+        return 0, 0.0, index
+
+    grouped: dict[str, list[tuple[int, tuple[str, object]]]] = {
+        tag: [] for tag in tag_order
+    }
+    for indexed in enumerate(tagged_results):
+        grouped[indexed[1][0]].append(indexed)
+    ranked_groups = {
+        tag: [item for _, item in sorted(items, key=ranking)]
+        for tag, items in grouped.items()
+    }
+    ranked: list[tuple[str, object]] = []
+    depth = 0
+    while any(depth < len(items) for items in ranked_groups.values()):
+        for tag in tag_order:
+            items = ranked_groups[tag]
+            if depth < len(items):
+                ranked.append(items[depth])
+        depth += 1
+    return ranked
+
+
+def _normalize_sources(
+    tagged_results: list[tuple[str, object]], company: str = ""
+) -> list[ResearchSource]:
     records: list[dict[str, Any]] = []
     by_url: dict[str, dict[str, Any]] = {}
     domain_counts: Counter[str] = Counter()
-    for tag, raw in tagged_results:
-        if not isinstance(raw, dict):
-            continue
-        url = _canonical_url(raw.get("url"))
-        title = str(raw.get("title") or "").strip()
-        snippet = str(raw.get("snippet") or "").strip()
+    ranked = _rank_tagged_results(tagged_results, company)
+    tag_order = list(dict.fromkeys(tag for tag, _ in ranked))
+    queues = {tag: [raw for item_tag, raw in ranked if item_tag == tag] for tag in tag_order}
+    cursors = {tag: 0 for tag in tag_order}
+
+    def accept(tag: str, raw: object) -> bool:
+        title, snippet, url, published_date = _result_fields(raw)
         if not url or (not title and not snippet):
-            continue
+            return False
         if url in by_url:
             if tag not in by_url[url]["query_tags"]:
                 by_url[url]["query_tags"].append(tag)
-            continue
+            return True
         host = urlsplit(url).hostname or ""
         domain = _domain_bucket(host)
         if domain_counts[domain] >= 2 or len(records) >= 10:
-            continue
+            return False
         record = {
             "title": title or host,
             "url": url,
-            "published_date": str(raw.get("published_date") or raw.get("date") or "").strip() or None,
+            "published_date": published_date,
             "snippet": snippet[:600] or None,
             "query_tags": [tag],
         }
         records.append(record)
         by_url[url] = record
         domain_counts[domain] += 1
+        return True
+
+    # First secure one usable source (or shared duplicate) per category.
+    for tag in tag_order:
+        while cursors[tag] < len(queues[tag]) and len(records) < 10:
+            raw = queues[tag][cursors[tag]]
+            cursors[tag] += 1
+            if accept(tag, raw):
+                break
+
+    # Then fill the remaining global budget one source per category per round.
+    while len(records) < 10:
+        made_progress = False
+        for tag in tag_order:
+            if cursors[tag] >= len(queues[tag]):
+                continue
+            raw = queues[tag][cursors[tag]]
+            cursors[tag] += 1
+            made_progress = True
+            accept(tag, raw)
+            if len(records) >= 10:
+                break
+        if not made_progress:
+            break
     return [ResearchSource(id=f"S{index}", **record) for index, record in enumerate(records, start=1)]
+
+
+def _coverage_warnings(tag: str, response: SearchResponse) -> list[str]:
+    failures = [
+        attempt
+        for attempt in response.attempts
+        if attempt.outcome not in {SearchOutcome.SUCCESS, SearchOutcome.EMPTY}
+    ]
+    if response.results and failures:
+        return [f"Primary search coverage was degraded for {tag}; fallback results were used."]
+    if failures:
+        categories = ", ".join(dict.fromkeys(attempt.outcome.value for attempt in failures))
+        return [f"Search unavailable for {tag} ({categories})."]
+    if not response.results and not response.attempts:
+        return [f"Search unavailable for {tag} (no provider configured)."]
+    return []
 
 
 def _candidate_context(profile: dict[str, Any]) -> dict[str, Any]:
@@ -362,13 +499,49 @@ def research_company(jd: ParsedJD) -> CompanyBrief:
     company, role = jd.company or "Unknown", jd.role or "Unknown"
     tagged_results: list[tuple[str, object]] = []
     failures: list[str] = []
-    for tag, query in _build_search_queries(company, role, jd):
+    queries = _build_search_queries(company, role, jd)
+    settings = get_settings()
+    responses: list[SearchResponse | Exception | None] = [None] * len(queries)
+    with trace_span(
+        "caerus.research.search_batch",
+        {"company": company, "query_count": len(queries)},
+    ) as batch_span:
+        with ThreadPoolExecutor(
+            max_workers=min(settings.search_concurrency, len(queries)),
+            thread_name_prefix="caerus-search",
+        ) as executor:
+            future_indexes = {
+                executor.submit(copy_context().run, web_search, query, 4): index
+                for index, (_, query) in enumerate(queries)
+            }
+            for future in as_completed(future_indexes):
+                index = future_indexes[future]
+                try:
+                    responses[index] = future.result()
+                except Exception as exc:
+                    responses[index] = exc
+        if batch_span is not None:
+            try:
+                batch_span.update(
+                    output={
+                        "query_count": len(queries),
+                        "completed_count": sum(response is not None for response in responses),
+                    }
+                )
+            except Exception as exc:  # pragma: no cover - tracing is always non-fatal
+                logger.warning("research search trace update failed (non-fatal): {}", type(exc).__name__)
+
+    for (tag, query), response in zip(queries, responses, strict=True):
+        if isinstance(response, SearchResponse):
+            tagged_results.extend((tag, result) for result in response.results)
+            failures.extend(_coverage_warnings(tag, response))
+            continue
         try:
-            tagged_results.extend((tag, result) for result in web_search(query, num_results=4))
+            raise response if isinstance(response, Exception) else RuntimeError("missing response")
         except Exception as exc:
-            logger.warning("search failed for query '{}': {}", query, exc)
-            failures.append(f"Search unavailable for {tag}.")
-    sources = _normalize_sources(tagged_results)
+            logger.warning("search failed for query '{}': {}", query, type(exc).__name__)
+            failures.append(f"Search unavailable for {tag} (unexpected failure).")
+    sources = _normalize_sources(tagged_results, company)
     if not sources:
         return _safe_brief(jd, [], failures)
 
