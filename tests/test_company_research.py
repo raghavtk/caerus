@@ -1,19 +1,43 @@
 from __future__ import annotations
 
 import json
+import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import date
-from unittest.mock import patch
+from threading import Lock, get_ident
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from agents.company_research import (
     _ResearchDraft,
     _build_search_queries,
+    _company_domain_match,
     _fit_score,
     _normalize_sources,
     _prompt_payload,
     _repair_payload,
     research_company,
 )
+from config import Settings
 from schemas.models import EvidenceClaim, ParsedJD, ResearchSource, ResearchStatus
+from skills.search import SearchResponse, SearchResult
+
+
+def _search_response(*items: dict[str, str]) -> SearchResponse:
+    results = tuple(
+        SearchResult(
+            title=item.get("title", ""),
+            snippet=item.get("snippet", ""),
+            url=item["url"],
+            provider="serper",
+            query="test query",
+            published_date=item.get("published_date"),
+        )
+        for item in items
+    )
+    return SearchResponse(results, (), "serper")
 
 
 def test_queries_are_current_year_role_specific() -> None:
@@ -25,6 +49,40 @@ def test_queries_are_current_year_role_specific() -> None:
     assert len(queries) == 5
     assert any("2031" in query for _, query in queries)
     assert any("Platform Engineer" in query and "systems" in query for _, query in queries)
+
+
+@pytest.mark.parametrize(
+    ("company", "host"),
+    [
+        ("X", "x.com"),
+        ("Meta", "engineering.meta.com"),
+        ("Apple Inc.", "jobs.apple.com"),
+        ("Block, Inc.", "careers.block.xyz"),
+        ("Open AI", "open-ai.com"),
+        ("The Acme Cloud Corporation", "acme-cloud.co.uk"),
+    ],
+)
+def test_company_domain_match_uses_complete_normalized_registered_label(
+    company: str, host: str
+) -> None:
+    assert _company_domain_match(company, host) is True
+
+
+@pytest.mark.parametrize(
+    ("company", "host"),
+    [
+        ("X", "example.com"),
+        ("Meta", "metadata.io"),
+        ("Apple", "pineapple.com"),
+        ("Block", "blockchain.com"),
+        ("Open AI", "openair.com"),
+        ("Acme", "acme.evil.com"),
+    ],
+)
+def test_company_domain_match_rejects_substrings_and_spoofed_subdomains(
+    company: str, host: str
+) -> None:
+    assert _company_domain_match(company, host) is False
 
 
 def test_source_normalization_is_bounded_canonical_and_deterministic() -> None:
@@ -70,6 +128,139 @@ def test_equivalent_urls_and_sibling_subdomains_share_dedupe_cap() -> None:
     assert len(sources) == 2
     assert sources[0].url == "https://a.example.com/p?a=1&b=2"
     assert sources[0].query_tags == ["a", "b"]
+
+
+def test_category_ranking_prefers_authoritative_and_recent_sources() -> None:
+    sponsorship = _normalize_sources(
+        [
+            ("sponsorship", {"title": "Blog", "url": "https://blog.test/visa", "snippet": "x"}),
+            ("sponsorship", {"title": "Careers", "url": "https://acme.com/careers/visa", "snippet": "x"}),
+            ("sponsorship", {"title": "Disclosure", "url": "https://dol.gov/lca", "snippet": "x"}),
+        ],
+        "Acme",
+    )
+    product = _normalize_sources(
+        [
+            ("product_engineering", {"title": "Review", "url": "https://review.test/acme", "snippet": "x"}),
+            ("product_engineering", {"title": "Engineering", "url": "https://acme.com/engineering", "snippet": "x"}),
+        ],
+        "Acme",
+    )
+    recent = _normalize_sources(
+        [
+            ("recent_developments", {"title": "Undated", "url": "https://u.test/a", "snippet": "x"}),
+            ("recent_developments", {"title": "Old", "url": "https://o.test/a", "snippet": "x", "published_date": "2024-01-01"}),
+            ("recent_developments", {"title": "New", "url": "https://n.test/a", "snippet": "x", "published_date": "2026-08-30"}),
+        ],
+        "Acme",
+    )
+
+    assert [source.title for source in sponsorship] == ["Disclosure", "Careers", "Blog"]
+    assert [source.title for source in product] == ["Engineering", "Review"]
+    assert [source.title for source in recent] == ["New", "Old", "Undated"]
+
+
+def test_source_cap_is_category_balanced_before_round_robin_fill() -> None:
+    categories = [
+        "product_engineering",
+        "team_technology",
+        "culture",
+        "sponsorship",
+        "recent_developments",
+    ]
+    tagged: list[tuple[str, dict[str, str]]] = []
+    for category in categories:
+        for index in range(3):
+            host = f"acme-{category}-{index}.test"
+            if category == "sponsorship" and index == 0:
+                host = "uscis.gov"
+            tagged.append(
+                (
+                    category,
+                    {
+                        "title": f"{category}-{index}",
+                        "url": f"https://{host}/source",
+                        "snippet": "evidence",
+                        "published_date": f"2026-08-{30 - index:02d}",
+                    },
+                )
+            )
+
+    sources = _normalize_sources(tagged, "Acme")
+
+    assert len(sources) == 10
+    assert [source.query_tags[0] for source in sources[:5]] == categories
+    assert {source.query_tags[0] for source in sources} == set(categories)
+    assert sources[3].title == "sponsorship-0"
+    assert sources[4].title == "recent_developments-0"
+
+
+@patch("agents.company_research.get_user_profile", return_value={"projects": []})
+@patch("agents.company_research.generate_structured", return_value=_ResearchDraft())
+@patch("agents.company_research.get_settings")
+@patch("agents.company_research.web_search")
+def test_searches_use_bounded_concurrency_and_preserve_query_order(
+    mock_search, mock_settings, mock_generate, mock_profile
+) -> None:
+    mock_settings.return_value = Settings(_env_file=None, search_concurrency=2)
+    lock = Lock()
+    active = 0
+    max_active = 0
+
+    def search(query: str, num_results: int) -> SearchResponse:
+        nonlocal active, max_active
+        with lock:
+            active += 1
+            max_active = max(max_active, active)
+        time.sleep(0.03 if "product engineering" in query else 0.005)
+        with lock:
+            active -= 1
+        slug = str(abs(hash(query)))
+        result = SearchResult(query, "evidence", f"https://d{slug}.test/a", "serper", query)
+        return SearchResponse((result,), (), "serper")
+
+    mock_search.side_effect = search
+    jd = ParsedJD(company="Acme", role="Engineer")
+    brief = research_company(jd)
+
+    expected_titles = [query for _, query in _build_search_queries("Acme", "Engineer", jd)]
+    assert max_active == 2
+    assert [source.title for source in brief.sources] == expected_titles
+
+
+@patch("agents.company_research.get_settings")
+@patch("agents.company_research.web_search")
+def test_search_workers_inherit_trace_context_initialized_on_caller(
+    mock_search, mock_settings
+) -> None:
+    marker: ContextVar[str] = ContextVar("trace_marker", default="missing")
+    caller_thread = get_ident()
+    trace_threads: list[int] = []
+    worker_threads: list[int] = []
+
+    @contextmanager
+    def fake_trace_span(name: str, payload: dict[str, object]):
+        trace_threads.append(get_ident())
+        token = marker.set("caller-trace")
+        try:
+            yield MagicMock()
+        finally:
+            marker.reset(token)
+
+    def search(query: str, num_results: int) -> SearchResponse:
+        worker_threads.append(get_ident())
+        assert marker.get() == "caller-trace"
+        return SearchResponse((), (), "serper")
+
+    mock_settings.return_value = Settings(_env_file=None, search_concurrency=2)
+    mock_search.side_effect = search
+    with patch("agents.company_research.trace_span", side_effect=fake_trace_span):
+        brief = research_company(ParsedJD(company="Acme", role="Engineer"))
+
+    assert brief.research_status == ResearchStatus.UNAVAILABLE
+    assert trace_threads == [caller_thread]
+    assert worker_threads
+    assert all(thread_id != caller_thread for thread_id in worker_threads)
 
 
 def test_oversized_prompt_remains_complete_valid_json() -> None:
@@ -119,7 +310,7 @@ def test_repair_payload_is_bounded_valid_json_for_large_scalar() -> None:
 
 
 @patch("agents.company_research.generate_structured")
-@patch("agents.company_research.web_search", return_value=[])
+@patch("agents.company_research.web_search", return_value=_search_response())
 def test_no_evidence_skips_llm(mock_search, mock_generate) -> None:
     brief = research_company(ParsedJD(company="Acme", role="Engineer"))
 
@@ -135,13 +326,20 @@ def test_no_evidence_skips_llm(mock_search, mock_generate) -> None:
 @patch("agents.company_research.generate_structured")
 @patch("agents.company_research.web_search")
 def test_partial_search_and_invalid_citation_are_repaired_once(mock_search, mock_generate, mock_profile) -> None:
-    mock_search.side_effect = [
-        RuntimeError("provider down"),
-        [{"title": "Engineering", "url": "https://acme.test/eng", "snippet": "Python platform team"}],
-        [],
-        [],
-        [],
-    ]
+    def search(query: str, num_results: int) -> SearchResponse:
+        if "product engineering" in query:
+            raise RuntimeError("provider down")
+        if "team technology" in query:
+            return _search_response(
+                {
+                    "title": "Engineering",
+                    "url": "https://acme.test/eng",
+                    "snippet": "Python platform team",
+                }
+            )
+        return _search_response()
+
+    mock_search.side_effect = search
     invalid = _ResearchDraft(
         tech_highlights=["Python platform team"],
         evidence=[EvidenceClaim(category="tech", statement="Python platform team", source_ids=["S9"])],
@@ -165,7 +363,10 @@ def test_partial_search_and_invalid_citation_are_repaired_once(mock_search, mock
     assert brief.research_status == ResearchStatus.PARTIAL
     assert brief.tech_highlights == ["Python platform team"]
     assert all(source_id == "S1" for claim in brief.evidence for source_id in claim.source_ids)
-    assert "Search unavailable for product_engineering." in brief.concerns_or_unknowns
+    assert any(
+        item.startswith("Search unavailable for product_engineering")
+        for item in brief.concerns_or_unknowns
+    )
     assert 0 <= brief.fit_score <= 100
 
 
@@ -173,9 +374,9 @@ def test_partial_search_and_invalid_citation_are_repaired_once(mock_search, mock
 @patch("agents.company_research.generate_structured")
 @patch("agents.company_research.web_search")
 def test_failed_repair_returns_safe_partial(mock_search, mock_generate, mock_profile) -> None:
-    mock_search.return_value = [
+    mock_search.return_value = _search_response(
         {"title": "Engineering", "url": "https://acme.test/eng", "snippet": "Evidence"}
-    ]
+    )
     mock_generate.side_effect = [
         _ResearchDraft(
             culture_notes=["Unsupported culture claim"],
@@ -198,9 +399,9 @@ def test_failed_repair_returns_safe_partial(mock_search, mock_generate, mock_pro
 def test_complete_status_requires_valid_core_evidence_and_no_search_failures(
     mock_search, mock_generate, mock_profile
 ) -> None:
-    mock_search.return_value = [
+    mock_search.return_value = _search_response(
         {"title": "Engineering", "url": "https://acme.test/eng", "snippet": "Python platform"}
-    ]
+    )
     mock_generate.return_value = _ResearchDraft(
         role_context=["Platform engineers build Python services"],
         tech_highlights=["The platform uses Python"],
@@ -224,9 +425,9 @@ def test_complete_status_requires_valid_core_evidence_and_no_search_failures(
 @patch("agents.company_research.generate_structured")
 @patch("agents.company_research.web_search")
 def test_uncited_downstream_fields_are_removed(mock_search, mock_generate, mock_profile) -> None:
-    mock_search.return_value = [
+    mock_search.return_value = _search_response(
         {"title": "Engineering", "url": "https://acme.test/eng", "snippet": "Python platform"}
-    ]
+    )
     mock_generate.return_value = _ResearchDraft(
         strong_overlaps=["Unsupported overlap"],
         potential_angles=["Unsupported angle"],
@@ -263,9 +464,9 @@ def test_fit_score_does_not_reward_uncited_model_overlap_counts() -> None:
 def test_orphan_claims_cannot_make_research_complete_or_inflate_fit(
     mock_search, mock_generate, mock_profile
 ) -> None:
-    mock_search.return_value = [
+    mock_search.return_value = _search_response(
         {"title": "Engineering", "url": "https://acme.test/eng", "snippet": "Python Engineer"}
-    ]
+    )
     mock_generate.return_value = _ResearchDraft(
         evidence=[
             EvidenceClaim(category="role_context", statement="Python Engineer", source_ids=["S1"]),

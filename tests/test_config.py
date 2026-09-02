@@ -4,6 +4,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import config
+import pytest
+from pydantic import ValidationError
 
 
 def test_cover_letter_project_string_false_is_excluded() -> None:
@@ -61,3 +63,43 @@ def test_user_profile_ignores_non_list_project_sections(tmp_path) -> None:
             config.get_user_profile.cache_clear()
 
     assert profile["projects"] == [{"name": "Graduate"}]
+
+
+def test_search_settings_have_production_defaults() -> None:
+    settings = config.Settings(_env_file=None)
+
+    assert settings.search_provider == "auto"
+    assert settings.search_fallback_on_empty is True
+    assert settings.search_timeout_seconds == 10
+    assert settings.search_max_attempts == 2
+    assert settings.search_concurrency == 3
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("serper", "serper"), ("TAVILY", "tavily"), (" Auto ", "auto")],
+)
+def test_search_provider_is_normalized(value: str, expected: str) -> None:
+    assert config.Settings(_env_file=None, search_provider=value).search_provider == expected
+
+
+@pytest.mark.parametrize("value", ["none", "google", "", 3])
+def test_search_provider_must_be_supported(value: object) -> None:
+    with pytest.raises(ValidationError, match="search_provider must be one of"):
+        config.Settings(_env_file=None, search_provider=value)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("search_timeout_seconds", 0),
+        ("search_timeout_seconds", 61),
+        ("search_max_attempts", 0),
+        ("search_max_attempts", 4),
+        ("search_concurrency", 0),
+        ("search_concurrency", 6),
+    ],
+)
+def test_search_numeric_settings_are_bounded(field: str, value: int) -> None:
+    with pytest.raises(ValidationError):
+        config.Settings(_env_file=None, **{field: value})
