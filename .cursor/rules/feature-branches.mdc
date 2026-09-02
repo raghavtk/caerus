@@ -1,0 +1,12 @@
+---
+description: Require a fresh feature branch for every Caerus feature or issue
+alwaysApply: true
+---
+
+# Feature Branch Workflow
+
+- Before changing code for a Caerus feature or issue, fetch the latest remote state.
+- Start the work from updated `origin/main` on a new branch named `codex/<short-feature-name>`.
+- Never reuse a branch that already has, or previously had, a pull request.
+- Confirm the current branch is dedicated to the requested work before editing or committing.
+- Keep unrelated working-tree files out of the feature commit.
