@@ -1,6 +1,7 @@
 # Local / generated docs
 CHANGELOG.md
 /documentation/
+/tradeoffs.md
 
 # Environment and secrets
 .env
