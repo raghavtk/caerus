@@ -17,6 +17,7 @@ from skills.agent_eval import (
     run_agent_eval,
 )
 from skills.tracing import build_mcp_config_json, verify_langfuse
+from skills.output_writer import find_libreoffice, find_pdftoppm
 
 app = typer.Typer(help="Caerus job application CLI")
 langfuse_app = typer.Typer(help="Langfuse tracing and MCP helpers")
@@ -80,6 +81,17 @@ def check() -> None:
     }
     for key, ok in checks.items():
         console.print(f"{'✅' if ok else '❌'} {key}")
+
+    libreoffice = find_libreoffice()
+    console.print(
+        f"{'✅' if libreoffice else '❌'} LibreOffice: "
+        f"{libreoffice or 'not found (install LibreOffice or set LIBREOFFICE_PATH)'}"
+    )
+    pdftoppm = find_pdftoppm()
+    console.print(
+        f"{'✅' if pdftoppm else '❌'} Poppler pdftoppm: "
+        f"{pdftoppm or 'not found (install Poppler for PDF render validation)'}"
+    )
 
     console.print(f"{'✅' if settings.langfuse_host else '❌'} LANGFUSE_HOST={settings.langfuse_host}")
 

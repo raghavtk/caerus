@@ -103,3 +103,20 @@ def test_search_provider_must_be_supported(value: object) -> None:
 def test_search_numeric_settings_are_bounded(field: str, value: int) -> None:
     with pytest.raises(ValidationError):
         config.Settings(_env_file=None, **{field: value})
+
+
+def test_cover_letter_contact_details_strip_whitespace_and_omit_blanks() -> None:
+    settings = config.Settings(
+        _env_file=None,
+        cover_letter_email="  candidate@example.com ",
+        cover_letter_phone="   ",
+        cover_letter_location=" New York, NY ",
+        cover_letter_linkedin_url=" https://linkedin.com/in/candidate ",
+        cover_letter_portfolio_url="",
+    )
+
+    assert settings.cover_letter_email == "candidate@example.com"
+    assert settings.cover_letter_phone is None
+    assert settings.cover_letter_location == "New York, NY"
+    assert settings.cover_letter_linkedin_url == "https://linkedin.com/in/candidate"
+    assert settings.cover_letter_portfolio_url is None

@@ -36,6 +36,16 @@ class Settings(BaseSettings):
     resumes_dir: str = "resumes"
     user_profile_path: str = "context/user_profile.yaml"
     profile_archive_path: str = "context/profile_archive.yaml"
+    libreoffice_path: str | None = None
+
+    # Optional identity details used in the cover-letter document header.  These
+    # are deliberately separate from the profile so users can keep contact
+    # information out of repository-tracked context files.
+    cover_letter_email: str | None = None
+    cover_letter_phone: str | None = None
+    cover_letter_location: str | None = None
+    cover_letter_linkedin_url: str | None = None
+    cover_letter_portfolio_url: str | None = None
 
     @property
     def notion_via_mcp(self) -> bool:
@@ -50,6 +60,22 @@ class Settings(BaseSettings):
         if provider not in {"auto", "serper", "tavily"}:
             raise ValueError("search_provider must be one of: auto, serper, tavily")
         return provider
+
+    @field_validator(
+        "cover_letter_email",
+        "cover_letter_phone",
+        "cover_letter_location",
+        "cover_letter_linkedin_url",
+        "cover_letter_portfolio_url",
+        "libreoffice_path",
+        mode="before",
+    )
+    @classmethod
+    def normalize_optional_contact_value(cls, value: object) -> object:
+        """Treat whitespace-only environment values as absent contact details."""
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
 
     @property
     def langfuse_enabled(self) -> bool:

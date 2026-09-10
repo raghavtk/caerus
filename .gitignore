@@ -9,6 +9,7 @@ CHANGELOG.md
 
 # Virtual environments
 .venv/
+.venv-win/
 venv/
 env/
 
@@ -60,6 +61,7 @@ coverage.xml
 
 # Caerus runtime outputs
 outputs/
+tmp/
 
 # Personal profile data (keep real files local; commit *.example.yaml only)
 context/user_profile.yaml
