@@ -9,6 +9,7 @@ import pytest
 from agents.cover_letter import (
     CoverLetterQualityError,
     _hook_from_body,
+    _critique_passes,
     _build_user_prompt,
     _build_system_prompt,
     count_words,
@@ -19,11 +20,28 @@ from agents.cover_letter import (
 from schemas.models import (
     CompanyBrief,
     CompanyStage,
+    CoverLetterCritique,
     ParsedJD,
     ProjectRecommendation,
     ResumeSelection,
     ResumeVariant,
 )
+
+
+def _critique(approved: bool, findings: list[str] | None = None) -> CoverLetterCritique:
+    score = 5 if approved else 2
+    return CoverLetterCritique(
+        approved=approved,
+        findings=findings or ([] if approved else ["Revise the draft."]),
+        factual_grounding=score,
+        role_fit=score,
+        company_specificity=score,
+        voice=score,
+        clarity=score,
+        repetition=score,
+        cliches=score,
+        professional_tone=score,
+    )
 
 
 def _inputs() -> tuple[ParsedJD, CompanyBrief, ResumeSelection, dict]:
@@ -65,6 +83,12 @@ def _valid_body() -> str:
     )
 
 
+def test_critic_approval_requires_every_score_threshold() -> None:
+    critique = _critique(True)
+    critique.factual_grounding = 3
+    assert _critique_passes(critique) is False
+
+
 def _violations(body: str, profile: dict | None = None) -> list[str]:
     jd, _, _, default_profile = _inputs()
     return validate_cover_letter(body, jd=jd, profile=profile or default_profile)
@@ -83,10 +107,14 @@ def test_valid_cover_letter_passes_contract() -> None:
         (_valid_body().replace("connects", "connects — clearly"), "em and en dashes"),
         (_valid_body().replace("Caerus gave", "- Caerus gave"), "bullets"),
         (_valid_body().replace("Caerus gave", "+ Caerus gave"), "bullets"),
+        ("Dear Hiring Team, " + _valid_body(), "remove the greeting"),
+        (_valid_body() + "\nSincerely,", "remove the signoff"),
         (_valid_body().replace("Acme's", "Subject: Application\nAcme's"), "markup"),
         (_valid_body().replace("connects directly", "connects **directly**"), "markup"),
         (_valid_body().replace("connects directly", "connects _directly_"), "markup"),
         (_valid_body().replace("connects directly", "connects `directly`"), "markup"),
+        (_valid_body().replace("connects directly", "connects https://evil.test directly"), "URI schemes"),
+        (_valid_body().replace("connects directly", "connects \u202edirectly"), "bidirectional"),
         (_valid_body().replace("Acme's", "> Acme's"), "markup"),
         ("I " + _valid_body(), "begin the opening"),
         ("“I " + _valid_body(), "begin the opening"),
@@ -307,11 +335,13 @@ def test_hook_summary_preserves_full_opening_with_abbreviations() -> None:
 
 
 @patch("agents.cover_letter.get_user_profile")
+@patch("agents.cover_letter.generate_structured")
 @patch("agents.cover_letter.generate_text")
-def test_generate_cover_letter_repairs_once_and_derives_hook(mock_generate, mock_profile) -> None:
+def test_generate_cover_letter_repairs_once_and_derives_hook(mock_generate, mock_critic, mock_profile) -> None:
     jd, brief, selection, profile = _inputs()
     mock_profile.return_value = profile
     mock_generate.side_effect = ["Too short.", _valid_body()]
+    mock_critic.side_effect = [_critique(False), _critique(True)]
 
     result = generate_cover_letter(jd, brief, selection)
 
@@ -319,19 +349,22 @@ def test_generate_cover_letter_repairs_once_and_derives_hook(mock_generate, mock
     repair_payload = json.loads(mock_generate.call_args_list[1].kwargs["user_prompt"])
     assert repair_payload["violations"]
     assert repair_payload["evidence"]["job"]["company"] == "Acme"
-    assert "Repair the supplied draft" in mock_generate.call_args_list[1].kwargs["system_prompt"]
+    assert "Revise the supplied draft" in mock_generate.call_args_list[1].kwargs["system_prompt"]
     assert mock_generate.call_args_list[0].kwargs["trace_content"] is False
     assert result.word_count == 180
     assert result.hook_summary.startswith("Acme's Software Engineer role")
+    assert result.optimization_diagnostics.revision_count == 1
 
 
 @patch("agents.cover_letter.get_user_profile")
+@patch("agents.cover_letter.generate_structured")
 @patch("agents.cover_letter.generate_text")
-def test_generate_cover_letter_validates_raw_format_before_normalizing(mock_generate, mock_profile) -> None:
+def test_generate_cover_letter_validates_raw_format_before_normalizing(mock_generate, mock_critic, mock_profile) -> None:
     jd, brief, selection, profile = _inputs()
     mock_profile.return_value = profile
     raw_invalid = _valid_body().replace("Caerus gave", "Caerus gave\n- Built systems")
     mock_generate.side_effect = [raw_invalid, _valid_body()]
+    mock_critic.side_effect = [_critique(False), _critique(True)]
 
     generate_cover_letter(jd, brief, selection)
 
@@ -352,8 +385,9 @@ def test_generate_cover_letter_preflights_missing_evidence_without_model_call(mo
 
 
 @patch("agents.cover_letter.get_user_profile")
+@patch("agents.cover_letter.generate_structured", return_value=_critique(False))
 @patch("agents.cover_letter.generate_text", return_value="Still invalid.")
-def test_generate_cover_letter_fails_after_one_repair(mock_generate, mock_profile) -> None:
+def test_generate_cover_letter_fails_after_two_revisions(mock_generate, mock_critic, mock_profile) -> None:
     _, _, _, profile = _inputs()
     mock_profile.return_value = profile
     jd, brief, selection, _ = _inputs()
@@ -361,13 +395,15 @@ def test_generate_cover_letter_fails_after_one_repair(mock_generate, mock_profil
     with pytest.raises(CoverLetterQualityError) as exc_info:
         generate_cover_letter(jd, brief, selection)
 
-    assert mock_generate.call_count == 2
+    assert mock_generate.call_count == 3
+    assert mock_critic.call_count == 3
     assert exc_info.value.violations
 
 
 @patch("agents.cover_letter.get_user_profile")
+@patch("agents.cover_letter.generate_structured", return_value=_critique(False))
 @patch("agents.cover_letter.generate_text")
-def test_quality_exception_uses_safe_codes_not_private_phrases(mock_generate, mock_profile) -> None:
+def test_quality_exception_uses_safe_codes_not_private_phrases(mock_generate, mock_critic, mock_profile) -> None:
     jd, brief, selection, profile = _inputs()
     private_phrase = "private family detail"
     profile["voice_profile"]["forbidden_phrases"] = [private_phrase]
@@ -378,6 +414,6 @@ def test_quality_exception_uses_safe_codes_not_private_phrases(mock_generate, mo
     with pytest.raises(CoverLetterQualityError) as exc_info:
         generate_cover_letter(jd, brief, selection)
 
-    assert mock_generate.call_count == 2
-    assert exc_info.value.violations == ["forbidden_phrase"]
+    assert mock_generate.call_count == 3
+    assert exc_info.value.violations == ["forbidden_phrase", "critic_rejected"]
     assert private_phrase not in str(exc_info.value)

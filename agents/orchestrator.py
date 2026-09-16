@@ -50,6 +50,7 @@ def orchestrate(url_or_text: str, skip_notion: bool = False) -> ApplicationPacka
             company_brief=brief,
             resume_selection=selection,
             cover_letter=letter,
+            optimization_diagnostics=letter.optimization_diagnostics,
             session_id=session_id,
             trace_id=trace.trace_id,
             trace_url=trace.trace_url,

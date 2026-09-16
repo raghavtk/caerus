@@ -129,6 +129,63 @@ class CoverLetter(BaseModel):
     body: str = ""
     hook_summary: str = ""
     word_count: int = 0
+    optimization_diagnostics: CoverLetterOptimizationDiagnostics | None = None
+
+
+class CoverLetterCritique(BaseModel):
+    """Structured assessment of a cover-letter draft by the optimization critic."""
+
+    approved: bool = False
+    findings: list[str] = Field(default_factory=list)
+    factual_grounding: int = Field(ge=0, le=5)
+    role_fit: int = Field(ge=0, le=5)
+    company_specificity: int = Field(ge=0, le=5)
+    voice: int = Field(ge=0, le=5)
+    clarity: int = Field(ge=0, le=5)
+    repetition: int = Field(ge=0, le=5)
+    cliches: int = Field(ge=0, le=5)
+    professional_tone: int = Field(ge=0, le=5)
+
+
+class CoverLetterOptimizationDiagnostics(BaseModel):
+    revision_count: int = Field(default=0, ge=0, le=2)
+    critic: CoverLetterCritique | None = None
+    validation_codes: list[str] = Field(default_factory=list)
+    approved: bool = False
+
+
+class CoverLetterRenderDiagnostics(BaseModel):
+    """Outcome data for canonical DOCX rendering and PDF validation."""
+
+    stage: str = "not_started"
+    success: bool = False
+    validation_codes: list[str] = Field(default_factory=list)
+    pdf_page_count: int | None = Field(default=None, ge=0)
+    diagnostics_path: str | None = None
+    message: str | None = None
+
+
+class CoverLetterRecipient(BaseModel):
+    """Known recipient fields rendered as-is; missing fields are omitted."""
+
+    name: str | None = None
+    title: str | None = None
+    company: str | None = None
+    address_lines: list[str] = Field(default_factory=list)
+
+    @field_validator("name", "title", "company", mode="before")
+    @classmethod
+    def normalize_optional_text(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
+
+    @field_validator("address_lines", mode="before")
+    @classmethod
+    def normalize_address_lines(cls, value: object) -> object:
+        if not isinstance(value, list):
+            return value
+        return [line.strip() for line in value if isinstance(line, str) and line.strip()]
 
 
 class ApplicationPackage(BaseModel):
@@ -136,10 +193,14 @@ class ApplicationPackage(BaseModel):
     company_brief: CompanyBrief | None = None
     resume_selection: ResumeSelection | None = None
     cover_letter: CoverLetter | None = None
+    cover_letter_recipient: CoverLetterRecipient | None = None
+    optimization_diagnostics: CoverLetterOptimizationDiagnostics | None = None
+    render_diagnostics: CoverLetterRenderDiagnostics | None = None
     output_dir: str | None = None
     company_brief_path: str | None = None
     resume_report_path: str | None = None
     cover_letter_path: str | None = None
+    cover_letter_docx_path: str | None = None
     selected_resume_copy_path: str | None = None
     notion_page_id: str | None = None
     notion_url: str | None = None

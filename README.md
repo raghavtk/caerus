@@ -2,6 +2,17 @@
 
 God of opportunity, luck, and favorable moments.
 
+## Document output prerequisites
+
+Cover letters are written as editable DOCX files and converted to one-page PDFs. Install LibreOffice
+(`soffice`) and Poppler (`pdftoppm`) on the runtime host. If LibreOffice is installed outside the system
+path, set `LIBREOFFICE_PATH` in `.env`. Run `caerus check` to verify both tools before generating an
+application package.
+
+Optional cover-letter contact fields are configured with `COVER_LETTER_EMAIL`,
+`COVER_LETTER_PHONE`, `COVER_LETTER_LOCATION`, `COVER_LETTER_LINKEDIN_URL`, and
+`COVER_LETTER_PORTFOLIO_URL`; blank values are omitted from the document header.
+
 ## Testing
 
 See [tests/README.md](tests/README.md) for the dual-tier suite (free unit tests vs opt-in live agent evals). Default `pytest` never hits Gemini.
