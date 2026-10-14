@@ -141,7 +141,7 @@ def check_company_research(brief: CompanyBrief) -> list[CheckResult]:
     ]
 
 
-def run_agent_eval(agent: str, fixture_id: str) -> EvalReport:
+async def run_agent_eval(agent: str, fixture_id: str) -> EvalReport:
     if agent not in AGENTS:
         raise ValueError(f"unknown agent {agent!r}; choose from {AGENTS}")
 
@@ -158,7 +158,7 @@ def run_agent_eval(agent: str, fixture_id: str) -> EvalReport:
     jd = parse_jd(jd_text)
 
     if agent == "company_research":
-        brief = research_company(jd)
+        brief = await research_company(jd)
         report.output = brief.model_dump()
         report.checks = check_company_research(brief)
         return report

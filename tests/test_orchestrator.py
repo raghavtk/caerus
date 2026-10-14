@@ -15,7 +15,7 @@ from schemas.models import CompanyBrief, ParsedJD, ResumeSelection
 @patch("agents.orchestrator.research_company", return_value=CompanyBrief(company="Acme"))
 @patch("agents.orchestrator.parse_jd", return_value=ParsedJD(company="Acme", role="Engineer"))
 @patch("agents.orchestrator.pipeline_trace")
-def test_quality_failure_prevents_output_writes(
+async def test_quality_failure_prevents_output_writes(
     mock_pipeline_trace,
     mock_parse,
     mock_research,
@@ -28,7 +28,7 @@ def test_quality_failure_prevents_output_writes(
     trace.step.return_value.__enter__.return_value = MagicMock()
 
     with pytest.raises(CoverLetterQualityError):
-        orchestrate("job text", skip_notion=True)
+        await orchestrate("job text", skip_notion=True)
 
     mock_cover.assert_called_once()
     mock_write_outputs.assert_not_called()
@@ -40,7 +40,7 @@ def test_quality_failure_prevents_output_writes(
 @patch("agents.orchestrator.research_company", return_value=CompanyBrief(company="Acme"))
 @patch("agents.orchestrator.parse_jd", return_value=ParsedJD(company="Acme", role="Engineer"))
 @patch("agents.orchestrator.pipeline_trace")
-def test_cover_step_trace_excludes_personal_letter_content(
+async def test_cover_step_trace_excludes_personal_letter_content(
     mock_pipeline_trace,
     mock_parse,
     mock_research,
@@ -60,7 +60,7 @@ def test_cover_step_trace_excludes_personal_letter_content(
     mock_pipeline_trace.return_value.__enter__.return_value = trace
     trace.step.return_value.__enter__.return_value = step
 
-    result = orchestrate("job text", skip_notion=True)
+    result = await orchestrate("job text", skip_notion=True)
 
     assert isinstance(result, ApplicationPackage)
     cover_outputs = [

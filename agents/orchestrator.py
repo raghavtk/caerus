@@ -12,7 +12,7 @@ from skills.output_writer import write_outputs
 from skills.tracing import make_session_id, pipeline_trace
 
 
-def orchestrate(url_or_text: str, skip_notion: bool = False) -> ApplicationPackage:
+async def orchestrate(url_or_text: str, skip_notion: bool = False) -> ApplicationPackage:
     session_id = make_session_id(url_or_text)
     with pipeline_trace(
         session_id=session_id,
@@ -26,7 +26,7 @@ def orchestrate(url_or_text: str, skip_notion: bool = False) -> ApplicationPacka
 
         logger.info("step 2/6: company research")
         with trace.step("company_research") as step:
-            brief = research_company(jd)
+            brief = await research_company(jd)
             step.set_output({"fit_score": brief.fit_score, "stage": str(brief.stage)})
 
         logger.info("step 3/6: resume selection")

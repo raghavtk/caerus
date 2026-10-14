@@ -28,6 +28,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest>=8.2.0",
+  "pytest-asyncio>=0.23",
 ]
 
 [project.scripts]
@@ -35,6 +36,7 @@ caerus = "cli:app"
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+asyncio_mode = "auto"
 markers = [
   "live: hits Gemini/search APIs; requires CAERUS_ALLOW_LIVE=1 (deselected otherwise)",
 ]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -37,7 +38,7 @@ def run(
 ) -> None:
     value = url_or_text or typer.prompt("Paste job URL or JD text")
     try:
-        package = orchestrate(value, skip_notion=no_notion)
+        package = asyncio.run(orchestrate(value, skip_notion=no_notion))
     except Exception as exc:
         console.print(f"[red]Error:[/red] {exc}")
         raise typer.Exit(code=1)
@@ -175,11 +176,15 @@ def eval_run(
         console.print(f"[red]Unknown fixture:[/red] {fixture}")
         raise typer.Exit(code=1)
 
+    asyncio.run(_run_eval_fixtures(agent, fixtures, dump_json))
+
+
+async def _run_eval_fixtures(agent: str, fixtures: list[str], dump_json: bool) -> None:
     failures = 0
     for fixture_id in fixtures:
         console.print(f"\n[bold]{agent}[/bold] @ [cyan]{fixture_id}[/cyan]")
         try:
-            report = run_agent_eval(agent, fixture_id)
+            report = await run_agent_eval(agent, fixture_id)
         except Exception as exc:
             failures += 1
             console.print(f"[red]ERROR:[/red] {exc}")

@@ -102,3 +102,54 @@ def generate_structured(
         raise ValueError("Gemini did not return valid JSON") from exc
 
     return response_model.model_validate(data)
+
+
+async def generate_structured_async(
+    response_model: type[T],
+    *,
+    system_prompt: str,
+    user_prompt: str,
+    max_tokens: int = 2048,
+    trace_content: bool = False,
+) -> T:
+    from google import genai
+
+    settings = get_settings()
+    if not settings.gemini_api_key:
+        raise ValueError("GEMINI_API_KEY is not configured")
+
+    client = genai.Client(api_key=settings.gemini_api_key)
+    async with client.aio as async_client:
+        response = await async_client.models.generate_content(
+            model=settings.gemini_model,
+            contents=f"USER INPUT:\n{user_prompt}\n\nReturn JSON only.",
+            config={
+                "system_instruction": system_prompt,
+                "response_mime_type": "application/json",
+                "max_output_tokens": max_tokens,
+            },
+        )
+
+    text = (response.text or "").strip()
+    if not text:
+        raise ValueError("Gemini returned empty response")
+
+    trace_generation(
+        model=settings.gemini_model,
+        system_prompt=system_prompt if trace_content else "[redacted personal content]",
+        user_prompt=user_prompt if trace_content else "[redacted personal content]",
+        output_text=text if trace_content else "[redacted personal content]",
+        metadata={
+            "max_tokens": max_tokens,
+            "response_model": response_model.__name__,
+            "content_redacted": not trace_content,
+        },
+    )
+
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        logger.debug("invalid JSON from Gemini (content redacted)")
+        raise ValueError("Gemini did not return valid JSON") from exc
+
+    return response_model.model_validate(data)

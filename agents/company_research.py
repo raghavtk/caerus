@@ -1,20 +1,20 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from contextvars import copy_context
 from datetime import date, datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any
 from urllib.parse import urlsplit
 
+import httpx
 from loguru import logger
 from pydantic import BaseModel, Field
 
 from config import compact_projects, get_ranked_projects, get_settings, get_user_profile
-from llm import generate_structured
+from llm import generate_structured_async as generate_structured
 from schemas.models import CompanyBrief, CompanyStage, EvidenceClaim, ParsedJD, ResearchSource, ResearchStatus
 from skills.search import SearchOutcome, SearchResponse, SearchResult, canonicalize_url, web_search
 from skills.tracing import trace_span
@@ -495,7 +495,8 @@ def _safe_brief(
     )
 
 
-def research_company(jd: ParsedJD) -> CompanyBrief:
+async def research_company(jd: ParsedJD) -> CompanyBrief:
+    """Research with bounded async queries; caller cancellation propagates."""
     company, role = jd.company or "Unknown", jd.role or "Unknown"
     tagged_results: list[tuple[str, object]] = []
     failures: list[str] = []
@@ -506,20 +507,31 @@ def research_company(jd: ParsedJD) -> CompanyBrief:
         "caerus.research.search_batch",
         {"company": company, "query_count": len(queries)},
     ) as batch_span:
-        with ThreadPoolExecutor(
-            max_workers=min(settings.search_concurrency, len(queries)),
-            thread_name_prefix="caerus-search",
-        ) as executor:
-            future_indexes = {
-                executor.submit(copy_context().run, web_search, query, 4): index
+        semaphore = asyncio.Semaphore(settings.search_concurrency)
+        async with httpx.AsyncClient(follow_redirects=False) as client:
+            async def search_one(index: int, query: str) -> None:
+                async with semaphore:
+                    try:
+                        responses[index] = await web_search(query, 4, client=client)
+                    except Exception as exc:
+                        responses[index] = exc
+
+            tasks = [
+                asyncio.create_task(search_one(index, query))
                 for index, (_, query) in enumerate(queries)
-            }
-            for future in as_completed(future_indexes):
-                index = future_indexes[future]
-                try:
-                    responses[index] = future.result()
-                except Exception as exc:
-                    responses[index] = exc
+            ]
+            try:
+                _, pending = await asyncio.wait(
+                    tasks, timeout=settings.research_search_timeout_seconds
+                )
+                for index, task in enumerate(tasks):
+                    if task in pending:
+                        responses[index] = TimeoutError("research search deadline exhausted")
+            finally:
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
         if batch_span is not None:
             try:
                 batch_span.update(
@@ -540,7 +552,8 @@ def research_company(jd: ParsedJD) -> CompanyBrief:
             raise response if isinstance(response, Exception) else RuntimeError("missing response")
         except Exception as exc:
             logger.warning("search failed for query '{}': {}", query, type(exc).__name__)
-            failures.append(f"Search unavailable for {tag} (unexpected failure).")
+            reason = "search deadline exhausted" if isinstance(exc, TimeoutError) else "unexpected failure"
+            failures.append(f"Search unavailable for {tag} ({reason}).")
     sources = _normalize_sources(tagged_results, company)
     if not sources:
         return _safe_brief(jd, [], failures)
@@ -557,24 +570,24 @@ insufficient. Candidate comparisons must name matched JD/profile signals. Do not
 Return structured output only.
 """
     try:
-        draft = generate_structured(
+        draft = await generate_structured(
             _ResearchDraft, system_prompt=system_prompt, user_prompt=evidence_prompt, trace_content=False
         )
     except Exception as exc:
-        logger.warning("company research generation failed: {}", exc)
+        logger.warning("company research generation failed: {}", type(exc).__name__)
         return _safe_brief(jd, sources, [*failures, "Research synthesis was unavailable."])
     problems = _citation_problems(draft, {source.id for source in sources})
     if problems:
         try:
             repair_payload = _repair_payload(evidence_prompt, draft, problems)
-            draft = generate_structured(
+            draft = await generate_structured(
                 _ResearchDraft,
                 system_prompt=system_prompt + " Repair the draft once using the listed violations.",
                 user_prompt=repair_payload,
                 trace_content=False,
             )
         except Exception as exc:
-            logger.warning("company research citation repair failed: {}", exc)
+            logger.warning("company research citation repair failed: {}", type(exc).__name__)
             failures.append("Citation repair was unavailable; unsupported claims were omitted.")
     brief = _safe_brief(jd, sources, failures, draft, profile)
     if (

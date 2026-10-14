@@ -59,18 +59,18 @@ def _provider_response(
     )
 
 
-def test_invalid_request_raises_before_loading_settings() -> None:
+async def test_invalid_request_raises_before_loading_settings() -> None:
     with patch("skills.search.get_settings") as settings:
         with pytest.raises(ValueError, match="blank"):
-            web_search("   ")
+            await web_search("   ")
         with pytest.raises(ValueError, match="between 1 and 20"):
-            web_search("query", num_results=0)
+            await web_search("query", num_results=0)
         with pytest.raises(ValueError, match="between 1 and 20"):
-            web_search("query", num_results=21)
+            await web_search("query", num_results=21)
     settings.assert_not_called()
 
 
-def test_serper_parsing_canonicalization_metadata_and_limit() -> None:
+async def test_serper_parsing_canonicalization_metadata_and_limit() -> None:
     current_utc = datetime(2026, 9, 2, 12, 0, tzinfo=timezone.utc)
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -92,8 +92,8 @@ def test_serper_parsing_canonicalization_metadata_and_limit() -> None:
             },
         )
 
-    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        response = _search_provider(
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        response = await _search_provider(
             "serper",
             query="acme",
             num_results=2,
@@ -101,7 +101,7 @@ def test_serper_parsing_canonicalization_metadata_and_limit() -> None:
             timeout_seconds=2,
             max_attempts=2,
             client=client,
-            sleep=lambda _: None,
+            sleep=_no_sleep,
             now_utc=lambda: current_utc,
         )
 
@@ -117,7 +117,7 @@ def test_serper_parsing_canonicalization_metadata_and_limit() -> None:
     assert response.attempt.accepted_result_count == 2
 
 
-def test_tavily_uses_bearer_auth_and_preserves_score_and_date() -> None:
+async def test_tavily_uses_bearer_auth_and_preserves_score_and_date() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["Authorization"] == "Bearer secret"
         assert b"secret" not in request.content
@@ -136,8 +136,8 @@ def test_tavily_uses_bearer_auth_and_preserves_score_and_date() -> None:
             },
         )
 
-    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        response = _search_provider(
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        response = await _search_provider(
             "tavily",
             query="acme news",
             num_results=4,
@@ -145,7 +145,7 @@ def test_tavily_uses_bearer_auth_and_preserves_score_and_date() -> None:
             timeout_seconds=2,
             max_attempts=2,
             client=client,
-            sleep=lambda _: None,
+            sleep=_no_sleep,
         )
 
     assert response.results[0].score == pytest.approx(0.91)
@@ -154,7 +154,7 @@ def test_tavily_uses_bearer_auth_and_preserves_score_and_date() -> None:
 
 
 @pytest.mark.parametrize("status", [408, 429, 500, 503])
-def test_retryable_statuses_are_bounded(status: int) -> None:
+async def test_retryable_statuses_are_bounded(status: int) -> None:
     calls = 0
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -162,8 +162,8 @@ def test_retryable_statuses_are_bounded(status: int) -> None:
         calls += 1
         return httpx.Response(status, headers={"Retry-After": "0"})
 
-    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        response = _search_provider(
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        response = await _search_provider(
             "serper",
             query="query",
             num_results=2,
@@ -171,7 +171,7 @@ def test_retryable_statuses_are_bounded(status: int) -> None:
             timeout_seconds=2,
             max_attempts=2,
             client=client,
-            sleep=lambda _: None,
+            sleep=_no_sleep,
         )
 
     assert calls == 2
@@ -184,7 +184,7 @@ def test_retryable_statuses_are_bounded(status: int) -> None:
 
 
 @pytest.mark.parametrize("status", [400, 401, 403, 432, 433])
-def test_permanent_statuses_do_not_retry(status: int) -> None:
+async def test_permanent_statuses_do_not_retry(status: int) -> None:
     calls = 0
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -192,8 +192,8 @@ def test_permanent_statuses_do_not_retry(status: int) -> None:
         calls += 1
         return httpx.Response(status)
 
-    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        response = _search_provider(
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        response = await _search_provider(
             "tavily",
             query="query",
             num_results=2,
@@ -201,14 +201,14 @@ def test_permanent_statuses_do_not_retry(status: int) -> None:
             timeout_seconds=2,
             max_attempts=3,
             client=client,
-            sleep=lambda _: None,
+            sleep=_no_sleep,
         )
 
     assert calls == 1
     assert response.attempt.retry_count == 0
 
 
-def test_timeout_retries_but_malformed_json_does_not() -> None:
+async def test_timeout_retries_but_malformed_json_does_not() -> None:
     timeout_calls = 0
 
     def timeout_handler(request: httpx.Request) -> httpx.Response:
@@ -216,8 +216,8 @@ def test_timeout_retries_but_malformed_json_does_not() -> None:
         timeout_calls += 1
         raise httpx.ReadTimeout("secret should never be surfaced", request=request)
 
-    with httpx.Client(transport=httpx.MockTransport(timeout_handler)) as client:
-        timeout_response = _search_provider(
+    async with httpx.AsyncClient(transport=httpx.MockTransport(timeout_handler)) as client:
+        timeout_response = await _search_provider(
             "serper",
             query="query",
             num_results=2,
@@ -225,7 +225,7 @@ def test_timeout_retries_but_malformed_json_does_not() -> None:
             timeout_seconds=2,
             max_attempts=2,
             client=client,
-            sleep=lambda _: None,
+            sleep=_no_sleep,
         )
 
     malformed_calls = 0
@@ -235,8 +235,8 @@ def test_timeout_retries_but_malformed_json_does_not() -> None:
         malformed_calls += 1
         return httpx.Response(200, content=b"not-json")
 
-    with httpx.Client(transport=httpx.MockTransport(malformed_handler)) as client:
-        malformed_response = _search_provider(
+    async with httpx.AsyncClient(transport=httpx.MockTransport(malformed_handler)) as client:
+        malformed_response = await _search_provider(
             "serper",
             query="query",
             num_results=2,
@@ -244,7 +244,7 @@ def test_timeout_retries_but_malformed_json_does_not() -> None:
             timeout_seconds=2,
             max_attempts=2,
             client=client,
-            sleep=lambda _: None,
+            sleep=_no_sleep,
         )
 
     assert timeout_calls == 2
@@ -265,23 +265,23 @@ class _AdvancingClock:
         self.value += seconds
 
 
-class _TrackingStream(httpx.SyncByteStream):
+class _TrackingStream(httpx.AsyncByteStream):
     def __init__(self, chunks: list[bytes], clock: _AdvancingClock | None = None) -> None:
         self.chunks = chunks
         self.clock = clock
         self.closed = False
 
-    def __iter__(self):
+    async def __aiter__(self):
         for chunk in self.chunks:
             if self.clock is not None:
                 self.clock.advance(0.6)
             yield chunk
 
-    def close(self) -> None:
+    async def aclose(self) -> None:
         self.closed = True
 
 
-def test_streamed_response_stops_slow_drip_at_absolute_deadline() -> None:
+async def test_streamed_response_stops_slow_drip_at_absolute_deadline() -> None:
     clock = _AdvancingClock()
     stream = _TrackingStream(
         [b'{"organic":[', b'{"title":"late"}', b"]}"],
@@ -291,8 +291,8 @@ def test_streamed_response_stops_slow_drip_at_absolute_deadline() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, stream=stream)
 
-    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        response = _search_provider(
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        response = await _search_provider(
             "serper",
             query="query",
             num_results=2,
@@ -308,14 +308,14 @@ def test_streamed_response_stops_slow_drip_at_absolute_deadline() -> None:
     assert stream.closed is True
 
 
-def test_streamed_response_aborts_and_closes_when_body_is_oversized() -> None:
+async def test_streamed_response_aborts_and_closes_when_body_is_oversized() -> None:
     stream = _TrackingStream([b"x" * 200_000, b"y" * 100_000])
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, stream=stream)
 
-    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        response = _search_provider(
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        response = await _search_provider(
             "serper",
             query="query",
             num_results=2,
@@ -332,7 +332,7 @@ def test_streamed_response_aborts_and_closes_when_body_is_oversized() -> None:
 
 
 @pytest.mark.parametrize("header_kind", ["numeric", "http-date"])
-def test_retry_after_beyond_deadline_does_not_retry(header_kind: str) -> None:
+async def test_retry_after_beyond_deadline_does_not_retry(header_kind: str) -> None:
     current_utc = datetime(2026, 9, 2, 12, 0, tzinfo=timezone.utc)
     retry_after = (
         "10"
@@ -346,8 +346,8 @@ def test_retry_after_beyond_deadline_does_not_retry(header_kind: str) -> None:
         calls += 1
         return httpx.Response(429, headers={"Retry-After": retry_after})
 
-    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        response = _search_provider(
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        response = await _search_provider(
             "serper",
             query="query",
             num_results=2,
@@ -355,7 +355,7 @@ def test_retry_after_beyond_deadline_does_not_retry(header_kind: str) -> None:
             timeout_seconds=2,
             max_attempts=2,
             client=client,
-            sleep=lambda _: None,
+            sleep=_no_sleep,
             now_utc=lambda: current_utc,
         )
 
@@ -374,7 +374,7 @@ def test_retry_after_beyond_deadline_does_not_retry(header_kind: str) -> None:
         ("yesterday", "2026-09-01T12:00:00Z"),
     ],
 )
-def test_serper_relative_dates_are_normalized_with_injected_clock(
+async def test_serper_relative_dates_are_normalized_with_injected_clock(
     relative: str, expected: str
 ) -> None:
     current_utc = datetime(2026, 9, 2, 12, 0, tzinfo=timezone.utc)
@@ -393,8 +393,8 @@ def test_serper_relative_dates_are_normalized_with_injected_clock(
             },
         )
 
-    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        response = _search_provider(
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        response = await _search_provider(
             "serper",
             query="query",
             num_results=1,
@@ -410,7 +410,7 @@ def test_serper_relative_dates_are_normalized_with_injected_clock(
 
 @patch("skills.search._search_provider")
 @patch("skills.search.get_settings")
-def test_auto_falls_back_after_serper_failure(mock_settings, search_provider) -> None:
+async def test_auto_falls_back_after_serper_failure(mock_settings, search_provider) -> None:
     mock_settings.return_value = _settings(serper=True, tavily=True)
     result = SearchResult("A", "B", "https://a.test", "tavily", "query")
     search_provider.side_effect = [
@@ -418,7 +418,7 @@ def test_auto_falls_back_after_serper_failure(mock_settings, search_provider) ->
         _provider_response("tavily", SearchOutcome.SUCCESS, results=(result,)),
     ]
 
-    response = web_search(" query ")
+    response = await web_search(" query ")
 
     assert response.results == (result,)
     assert response.selected_provider == "tavily"
@@ -428,13 +428,13 @@ def test_auto_falls_back_after_serper_failure(mock_settings, search_provider) ->
 
 @patch("skills.search._search_provider")
 @patch("skills.search.get_settings")
-def test_empty_fallback_can_be_disabled(mock_settings, search_provider) -> None:
+async def test_empty_fallback_can_be_disabled(mock_settings, search_provider) -> None:
     mock_settings.return_value = _settings(
         serper=True, tavily=True, fallback_on_empty=False
     )
     search_provider.return_value = _provider_response("serper", SearchOutcome.EMPTY)
 
-    response = web_search("query")
+    response = await web_search("query")
 
     assert response.results == ()
     assert response.selected_provider == "serper"
@@ -443,23 +443,23 @@ def test_empty_fallback_can_be_disabled(mock_settings, search_provider) -> None:
 
 @patch("skills.search._search_provider")
 @patch("skills.search.get_settings")
-def test_forced_provider_never_calls_fallback(mock_settings, search_provider) -> None:
+async def test_forced_provider_never_calls_fallback(mock_settings, search_provider) -> None:
     mock_settings.return_value = _settings(
         serper=True, tavily=True, provider="tavily"
     )
     search_provider.return_value = _provider_response("tavily", SearchOutcome.EMPTY)
 
-    response = web_search("query")
+    response = await web_search("query")
 
     assert [attempt.provider for attempt in response.attempts] == ["tavily"]
     assert search_provider.call_args.args[0] == "tavily"
 
 
 @patch("skills.search.get_settings")
-def test_no_provider_is_distinct_from_valid_empty_results(mock_settings) -> None:
+async def test_no_provider_is_distinct_from_valid_empty_results(mock_settings) -> None:
     mock_settings.return_value = _settings()
 
-    response = web_search("query")
+    response = await web_search("query")
 
     assert response.results == ()
     assert response.attempts == ()
@@ -476,14 +476,18 @@ def test_canonicalize_url_rejects_unsafe_and_deduplicates_tracking_variants() ->
 
 @pytest.mark.live
 @pytest.mark.parametrize("provider", ["serper", "tavily"])
-def test_live_provider_smoke(provider: str) -> None:
+async def test_live_provider_smoke(provider: str) -> None:
     settings = get_settings()
     api_key = settings.serper_api_key if provider == "serper" else settings.tavily_api_key
     if not api_key:
         pytest.skip(f"{provider} API key is not configured")
     forced = settings.model_copy(update={"search_provider": provider})
     with patch("skills.search.get_settings", return_value=forced):
-        response = web_search("OpenAI official website", num_results=1)
+        response = await web_search("OpenAI official website", num_results=1)
 
     assert response.attempts
     assert response.attempts[0].provider == provider
+
+
+async def _no_sleep(_: float) -> None:
+    pass

@@ -97,3 +97,41 @@ def test_generate_structured_can_redact_trace_content(mock_settings, mock_trace)
     assert mock_trace.call_args.kwargs["user_prompt"] == "[redacted personal content]"
     assert mock_trace.call_args.kwargs["output_text"] == "[redacted personal content]"
     assert mock_trace.call_args.kwargs["metadata"]["content_redacted"] is True
+
+
+@pytest.mark.parametrize('cancel', [False, True])
+async def test_async_structured_uses_native_client_and_closes_on_cancellation(cancel):
+    import asyncio
+    from unittest.mock import AsyncMock
+    from llm import generate_structured_async
+
+    entered = asyncio.Event()
+    async def generate(**kwargs):
+        entered.set()
+        if cancel:
+            await asyncio.Event().wait()
+        return SimpleNamespace(text='{"answer": "ok"}')
+
+    async_client = MagicMock()
+    async_client.__aenter__ = AsyncMock(return_value=async_client)
+    async_client.__aexit__ = AsyncMock(return_value=False)
+    async_client.models.generate_content = AsyncMock(side_effect=generate)
+    client = SimpleNamespace(aio=async_client)
+    google = SimpleNamespace(genai=SimpleNamespace(Client=MagicMock(return_value=client)))
+    with patch.dict(sys.modules, {'google': google}), patch('llm.get_settings', return_value=SimpleNamespace(
+        gemini_api_key='secret', gemini_model='test'
+    )), patch('llm.trace_generation') as trace:
+        task = asyncio.create_task(generate_structured_async(
+            _StructuredResponse, system_prompt='private system', user_prompt='private profile'
+        ))
+        await asyncio.wait_for(entered.wait(), 1)
+        if cancel:
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            trace.assert_not_called()
+        else:
+            assert (await task).answer == 'ok'
+            assert trace.call_args.kwargs['user_prompt'] == '[redacted personal content]'
+        async_client.__aexit__.assert_awaited_once()
+        async_client.models.generate_content.assert_awaited_once()
