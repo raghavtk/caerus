@@ -26,12 +26,52 @@ async def test_total_deadline_stops_request_and_prevents_fallback():
             stopped.set()
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        with patch('skills.search.get_settings', return_value=settings(search_total_timeout_seconds=0.03)):
+        # Leave room for cold httpx imports on Windows CI before entering the handler.
+        with patch('skills.search.get_settings', return_value=settings(search_total_timeout_seconds=0.3)):
             response = await web_search('query', client=client)
         assert not client.is_closed
     assert stopped.is_set()
     assert calls == ['google.serper.dev']
     assert response.attempts[0].outcome == SearchOutcome.TIMEOUT
+
+
+@pytest.mark.parametrize('total_limited', [True, False])
+async def test_early_timer_expiry_stops_only_the_exhausted_budget(total_limited):
+    """Simulate a timer firing before the wall clock reaches the deadline."""
+    calls = []
+
+    class EarlyTimeout:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        def expired(self):
+            return True
+
+    async def handler(request):
+        calls.append(request.url.host)
+        if request.url.host == 'google.serper.dev':
+            raise TimeoutError('event-loop deadline expired early')
+        return httpx.Response(200, json={'results': []})
+
+    config = settings(search_timeout_seconds=1, search_total_timeout_seconds=1 if total_limited else 20)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with patch('skills.search.get_settings', return_value=config), patch(
+            'skills.search.asyncio.timeout', side_effect=lambda _: EarlyTimeout()
+        ):
+            response = await web_search('query', client=client)
+
+    # An expired provider budget must not cause a retry, even if wall time remains.
+    assert calls.count('google.serper.dev') == 1
+    assert response.attempts[0].outcome == SearchOutcome.TIMEOUT
+    if total_limited:
+        assert calls == ['google.serper.dev']
+        assert response.fallback_reason is None
+    else:
+        assert calls == ['google.serper.dev', 'api.tavily.com']
+        assert response.selected_provider == 'tavily'
 
 
 @pytest.mark.parametrize('phase', ['request', 'retry', 'fallback'])

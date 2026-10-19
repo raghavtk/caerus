@@ -1,0 +1,5 @@
+{
+  "name": "Alex Morgan (Synthetic Demo)",
+  "projects": [{"name": "Queue Lab", "description": "Built a Python task queue with retry handling and latency instrumentation."}],
+  "note": "Fictional candidate; all demo inputs and responses are synthetic."
+}

@@ -5,6 +5,7 @@ from urllib.parse import quote, urlsplit
 from bs4 import BeautifulSoup
 import httpx
 from loguru import logger
+from skills.metrics import record_request
 
 from skills.ats_scrapers.common import (
     FetchedJobPosting,
@@ -108,6 +109,7 @@ def _fetch_api(url: str, board: str, job_id: str) -> FetchedJobPosting:
         f"{quote(job_id, safe='')}?pay_transparency=true"
     )
     with httpx.Client(timeout=20, follow_redirects=True, headers=_HEADERS) as client:
+        record_request("greenhouse")
         response = client.get(endpoint)
         response.raise_for_status()
         payload = response.json()
@@ -118,6 +120,7 @@ def _fetch_api(url: str, board: str, job_id: str) -> FetchedJobPosting:
 
 def _fetch_html(url: str, job_id: str) -> FetchedJobPosting:
     with httpx.Client(timeout=20, follow_redirects=True, headers=_HEADERS) as client:
+        record_request("greenhouse")
         response = client.get(url)
         response.raise_for_status()
     soup = BeautifulSoup(response.text, "html.parser")

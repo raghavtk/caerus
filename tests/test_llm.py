@@ -8,10 +8,36 @@ import pytest
 from pydantic import BaseModel
 
 from llm import generate_structured, generate_text
+from skills.metrics import RunMetrics
 
 
 class _StructuredResponse(BaseModel):
     answer: str
+
+
+@pytest.mark.parametrize("structured", [False, True])
+@patch("llm.trace_generation")
+@patch("llm.get_settings")
+def test_generation_reports_real_usage(mock_settings, mock_trace, structured):
+    mock_settings.return_value = SimpleNamespace(
+        gemini_api_key="test", gemini_model="test",
+        llm_input_usd_per_million=1, llm_output_usd_per_million=2,
+    )
+    google, call = _fake_google('{"answer":"ok"}' if structured else "ok")
+    call.return_value.usage_metadata = SimpleNamespace(
+        prompt_token_count=100, candidates_token_count=20, thoughts_token_count=5,
+    )
+    metrics = RunMetrics()
+    with patch.dict(sys.modules, {"google": google}), metrics.stage("llm") as stage:
+        if structured:
+            generate_structured(_StructuredResponse, system_prompt="s", user_prompt="u")
+        else:
+            generate_text(system_prompt="s", user_prompt="u")
+    assert stage.requests == {"gemini": 1}
+    assert stage.input_tokens == 100
+    assert stage.output_tokens == 25
+    assert stage.usage_missing_requests == 0
+    assert stage.estimated_cost_usd == pytest.approx(0.00015)
 
 
 def _fake_google(response_text: str) -> tuple[object, MagicMock]:

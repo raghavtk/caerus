@@ -3,6 +3,7 @@ from __future__ import annotations
 from enum import Enum
 
 from pydantic import BaseModel, Field, field_validator
+from skills.metrics import RunMetrics
 
 
 class ResumeVariant(str, Enum):
@@ -189,6 +190,7 @@ class CoverLetterRecipient(BaseModel):
 
 
 class ApplicationPackage(BaseModel):
+    metrics: RunMetrics = Field(default_factory=RunMetrics)
     jd: ParsedJD
     company_brief: CompanyBrief | None = None
     resume_selection: ResumeSelection | None = None

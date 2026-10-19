@@ -42,6 +42,8 @@ def _write_via_api(package: ApplicationPackage, settings: Settings) -> Applicati
         "properties": _build_properties(package),
     }
     with httpx.Client(timeout=20, follow_redirects=True) as client:
+        from skills.metrics import record_request
+        record_request("notion")
         response = client.post("https://api.notion.com/v1/pages", headers=headers, json=body)
         response.raise_for_status()
         data = response.json()

@@ -15,6 +15,8 @@ class Settings(BaseSettings):
 
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.5-flash"
+    llm_input_usd_per_million: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    llm_output_usd_per_million: float | None = Field(default=None, ge=0, allow_inf_nan=False)
 
     serper_api_key: str | None = None
     tavily_api_key: str | None = None

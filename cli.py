@@ -30,6 +30,28 @@ app.add_typer(eval_app, name="eval")
 console = Console()
 
 
+def _print_metrics(package) -> None:
+    table = Table(title="Pipeline Metrics (LLM cost estimate)")
+    for column in ("Stage", "Seconds", "Requests", "Input tokens", "Output tokens", "USD"):
+        table.add_column(column)
+    for name, metric in package.metrics.stages.items():
+        cost = "unknown" if metric.estimated_cost_usd is None else f"{metric.estimated_cost_usd:.6f}"
+        table.add_row(name, f"{metric.latency_seconds:.3f}", str(sum(metric.requests.values())),
+                      str(metric.input_tokens), str(metric.output_tokens), cost)
+    console.print(table)
+
+
+@app.command()
+def demo(output_dir: Path = typer.Option(Path("outputs"), help="Destination for synthetic demo artifacts")) -> None:
+    """Replay saved synthetic responses offline; no credentials or document tools required."""
+    from skills.demo import run_demo
+
+    package = asyncio.run(run_demo(output_dir))
+    console.print("Offline synthetic replay complete. No API requests were made.")
+    console.print(f"Output Dir: {package.output_dir}")
+    _print_metrics(package)
+
+
 @app.command()
 def run(
     url_or_text: str | None = typer.Argument(default=None),
@@ -63,6 +85,7 @@ def run(
         table.add_row("Langfuse Trace", package.trace_url)
     console.print(table)
 
+    _print_metrics(package)
     if print_cover_letter and package.cover_letter:
         console.print("\n[bold]Cover Letter[/bold]\n")
         console.print(package.cover_letter.body)

@@ -1,107 +1,112 @@
 # Caerus
 
-God of opportunity, luck, and favorable moments.
+Caerus is a command-line tool that prepares a job application package from a job
+URL or pasted description. It researches the company, selects a resume from your
+existing variants, and writes a cover letter with Gemini.
 
-## Document output prerequisites
+Each live run produces a company brief, a resume selection report, and an editable
+DOCX cover letter with a one-page PDF. Caerus can also log the application to Notion.
 
-Cover letters are written as editable DOCX files and converted to one-page PDFs. Install LibreOffice
-(`soffice`) and Poppler (`pdftoppm`) on the runtime host. If LibreOffice is installed outside the system
-path, set `LIBREOFFICE_PATH` in `.env`. Run `caerus check` to verify both tools before generating an
-application package.
+## Try the offline demo
 
-Optional cover-letter contact fields are configured with `COVER_LETTER_EMAIL`,
-`COVER_LETTER_PHONE`, `COVER_LETTER_LOCATION`, `COVER_LETTER_LINKEDIN_URL`, and
-`COVER_LETTER_PORTFOLIO_URL`; blank values are omitted from the document header.
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then run:
 
-## Testing
-
-See [tests/README.md](tests/README.md) for the dual-tier suite (free unit tests vs opt-in live agent evals). Default `pytest` never hits Gemini.
-
-## Observability
-
-Caerus emits optional Langfuse traces for each pipeline run. Traces are hierarchical: a root `caerus.pipeline` span groups agent step spans, LLM generations, and tool calls (web search, Notion sync).
-
-### Setup
-
-1. Copy [`.env.example`](.env.example) to `.env` and set:
-   - `LANGFUSE_PUBLIC_KEY`
-   - `LANGFUSE_SECRET_KEY`
-   - `LANGFUSE_HOST` (default: `https://us.cloud.langfuse.com`)
-2. Verify connectivity:
-
-```bash
-caerus check
+```sh
+git clone https://github.com/raghavtk/caerus.git
+cd caerus
+uv python install 3.12
+uv sync --locked --extra dev --python 3.12
+uv run --frozen caerus demo
 ```
 
-3. Run the pipeline — the summary table includes **Session ID** and **Langfuse Trace** URL when tracing is enabled:
+The command prints a metrics summary and the path to a new directory under
+`outputs/`. Open that directory to read the company brief, resume report, and
+Markdown cover letter. It also contains the synthetic profile, saved job input,
+recorded responses, `application.json`, and `metrics.json`.
 
-```bash
-caerus run "https://example.com/jobs/123"
+The demo replays fictional responses through the pipeline. It makes no API calls
+and needs no credentials, personal files, LibreOffice, or Poppler. It demonstrates
+the application flow and output files. To inspect the saved text artifacts before
+running it, see [sample outputs](examples/demo).
+
+To choose the output location, run:
+
+```sh
+uv run --frozen caerus demo --output-dir outputs/my-demo
 ```
 
-### Langfuse MCP (Cursor)
+## Prepare a real application
 
-Query traces from Cursor using the [Langfuse MCP server](https://langfuse.com/docs/api-and-data-platform/features/mcp-server):
+Live runs need a Gemini API key, a search provider, your profile and resumes, and
+the document tools described below. They use API quota.
 
-1. Generate a ready-to-paste config from your `.env` keys:
+1. Copy [`.env.example`](.env.example) to `.env`. Set `GEMINI_API_KEY` and at least
+   one of `SERPER_API_KEY` or `TAVILY_API_KEY`. When both search keys are present,
+   Caerus tries Serper first by default.
+2. Copy [the profile example](context/user_profile.example.yaml) to
+   `context/user_profile.yaml`. Replace the example identity, experience, and projects
+   with your information.
+3. Place your resume PDFs in `resumes/`. Set each `resume_variants` entry in your
+   profile to the matching filename. Caerus selects an existing resume.
+4. Install LibreOffice and Poppler. Make `soffice` and `pdftoppm` available on your
+   system path. If Caerus cannot find LibreOffice, set `LIBREOFFICE_PATH` in `.env`.
+5. Run the setup check, then generate an application:
 
-```bash
-caerus langfuse mcp-config
+```sh
+uv run --frozen caerus check
+uv run --frozen caerus run "https://example.com/jobs/123" --no-notion
 ```
 
-2. Save the output to `.cursor/mcp.json` (gitignored), or copy [`.cursor/mcp.json.example`](.cursor/mcp.json.example) and replace the Basic auth token.
-3. Restart Cursor and confirm the Langfuse MCP server shows as connected.
+Replace the example URL with a real job posting. You can pass quoted job-description
+text instead. The setup check reports optional services too. Missing Notion or
+Langfuse credentials do not block a run with `--no-notion`.
 
-Example MCP prompts:
+The application summary prints the output directory. It contains:
 
-- "List observations for session `<session-id-from-run>`"
-- "Show generations under trace `<trace-id>`"
-- "Find recent observations named `caerus.pipeline`"
+- `cover_letter.docx` and `cover_letter.pdf`.
+- `company_brief.md` and `resume_report.md`.
+- A copy of the selected resume, when the file exists.
+- `metrics.json` with per-stage measurements.
 
-The config also includes **langfuse-docs** MCP (`https://langfuse.com/api/mcp`) for SDK documentation lookups while developing agents.
+The profile example explains how to name resume variants and provide project
+evidence. Optional `COVER_LETTER_*` values in `.env` add contact details to the
+letter header. Blank values are omitted. Personal profiles, resumes, credentials,
+and runtime output directories are gitignored.
 
-### Session IDs
+## Read run metrics
 
-Each run gets a session ID like `caerus-20260726T021500Z-a1b2c3d4`, derived from the input and timestamp. Use this ID to filter observations in Langfuse or via MCP.
+The CLI prints each stage's duration, request count, input tokens, output tokens,
+and estimated LLM cost. Successful runs save the same measurements in `metrics.json`.
+Local metrics work without Langfuse.
 
+To estimate token cost, set `LLM_INPUT_USD_PER_MILLION` and
+`LLM_OUTPUT_USD_PER_MILLION` to the rates for your configured `GEMINI_MODEL`.
+If rates or usage metadata are missing, the estimate is `unknown` in the CLI and
+`null` in JSON. Demo runs report zero requests, tokens, and cost.
 
-### Async search and research API
+Counts include explicit Gemini calls, search attempts, job-page fetches, and Notion
+calls. Search retries and fallback attempts count separately. SDK-internal retries,
+HTTP redirects, and tracing traffic are excluded. Output token counts include
+Gemini thinking tokens. Cost estimates exclude search charges, other services,
+cached-token discounts, and pricing tiers.
 
-`web_search`, `research_company`, `orchestrate`, and `run_agent_eval` are async
-functions. Await them in applications and notebooks that already have an event
-loop. The synchronous Typer commands own the `asyncio.run(...)` boundary.
+## Connect optional services
 
-```python
-import httpx
-from skills.search import web_search
-from agents.company_research import research_company
-from schemas.models import ParsedJD
+To log applications in Notion, configure `NOTION_TOKEN` and `NOTION_DATABASE_ID`,
+then omit `--no-notion` from the run command.
 
-async def investigate():
-    async with httpx.AsyncClient(follow_redirects=False) as client:
-        response = await web_search("Acme engineering", client=client)
-    brief = await research_company(ParsedJD(company="Acme", role="Engineer"))
-    return response, brief
+To trace runs in Langfuse, follow the [observability guide](docs/observability.md).
+It covers credentials, trace links, session IDs, and the optional Cursor MCP setup.
+
+## Develop and test
+
+```sh
+uv run --frozen --extra dev pytest -q
 ```
 
-Search creates and closes an async client when none is supplied; caller-owned
-clients remain open. Research shares one client across its query batch. Results
-and source IDs follow query order regardless of completion order; category-aware
-ranking and typed `SearchResponse` diagnostics remain in place.
+By default, tests use fixtures and mocks without calling Gemini. CI checks the
+locked installation, tests, demo, and package build on Ubuntu and Windows with
+Python 3.11 and 3.12.
 
-- `SEARCH_CONCURRENCY` (default 3, range 1–5) bounds active research queries.
-- `SEARCH_TIMEOUT_SECONDS` (default 10) bounds each provider, including retries,
-  streaming body reads, and retry delays.
-- `SEARCH_TOTAL_TIMEOUT_SECONDS` (default 20) is the shared query budget across
-  providers and fallback. A spent budget stops fallback and returns diagnostics.
-- `RESEARCH_SEARCH_TIMEOUT_SECONDS` (default 60) bounds the whole search batch,
-  including time waiting for a concurrency slot. On expiry, unfinished queries
-  are cancelled and awaited; completed evidence remains available for synthesis
-  and missing coverage is reported. This deadline applies to search, not synthesis.
-
-Caller cancellation propagates as `asyncio.CancelledError`, closes owned clients
-and active response streams, and cancels and awaits outstanding batch tasks.
-Other application stages (JD parsing, resume/cover letter generation, output and
-Notion writing) retain their existing synchronous APIs within orchestration.
-Use `asyncio.timeout(...)` around research when synthesis also needs a deadline.
-Offline async tests use `pytest-asyncio` in auto mode. Live tests remain opt-in.
+See the [development guide](docs/development.md) for dependency updates and the
+async Python API. See the [test guide](tests/README.md) for opt-in live evals.
