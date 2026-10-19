@@ -20,7 +20,8 @@ dependencies = [
   "pypdf>=5.0.0",
   "Pillow>=10.0.0",
   "tenacity>=8.3.0",
-  "google-genai>=0.4.0",
+  # Async research requires the SDK async context manager for cleanup.
+  "google-genai>=1.40.0",
   "instructor>=1.4.0",
   "langfuse>=2.37.6",
 ]
