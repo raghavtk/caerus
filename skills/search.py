@@ -85,6 +85,7 @@ class SearchResponse:
 class _ProviderResponse:
     results: tuple[SearchResult, ...]
     attempt: SearchAttempt
+    deadline_exhausted: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,16 +169,22 @@ async def web_search(
                 attempts.append(attempt)
                 provider_response = _ProviderResponse((), attempt)
             else:
+                remaining_budget = max(0, deadline - time.monotonic())
+                total_budget_limited = remaining_budget <= settings.search_timeout_seconds
                 provider_response = await _search_provider(
                     provider,
                     query=query,
                     num_results=num_results,
                     api_key=api_key,
-                    timeout_seconds=min(settings.search_timeout_seconds, max(0, deadline - time.monotonic())),
+                    timeout_seconds=min(settings.search_timeout_seconds, remaining_budget),
                     client=client,
                     max_attempts=settings.search_max_attempts,
                 )
                 attempts.append(provider_response.attempt)
+                # Event-loop timers can fire before monotonic() reaches the
+                # deadline, particularly with Windows' coarse timer resolution.
+                if total_budget_limited and provider_response.deadline_exhausted:
+                    break
 
             if provider_response.attempt.outcome in {SearchOutcome.SUCCESS, SearchOutcome.EMPTY}:
                 selected_provider = provider
@@ -248,6 +255,7 @@ async def _search_provider(
     last_message = "provider request failed"
     raw_count = 0
     accepted: tuple[SearchResult, ...] = ()
+    deadline_exhausted = False
     owns_client = client is None
     search_client = client or httpx.AsyncClient(follow_redirects=False)
 
@@ -255,12 +263,13 @@ async def _search_provider(
         for attempt_number in range(1, max_attempts + 1):
             remaining = deadline - monotonic()
             if remaining <= 0:
+                deadline_exhausted = True
                 last_outcome = SearchOutcome.TIMEOUT
                 last_message = "provider deadline exhausted"
                 break
             attempts_made = attempt_number
             try:
-                async with asyncio.timeout(remaining):
+                async with asyncio.timeout(remaining) as request_timeout:
                     response = await _send_request(
                         search_client,
                         provider,
@@ -282,6 +291,9 @@ async def _search_provider(
                 last_message = "provider request timed out"
                 retryable = True
                 response = None
+                if request_timeout.expired():
+                    deadline_exhausted = True
+                    break
             except (httpx.NetworkError, httpx.RemoteProtocolError, httpx.ProxyError):
                 last_outcome = SearchOutcome.TRANSPORT_ERROR
                 last_status = None
@@ -333,6 +345,7 @@ async def _search_provider(
                 break
             remaining = deadline - monotonic()
             if remaining <= 0:
+                deadline_exhausted = True
                 break
             delay = _retry_delay(
                 response,
@@ -348,6 +361,7 @@ async def _search_provider(
                     async with asyncio.timeout(remaining):
                         await sleep(delay)
                 except TimeoutError:
+                    deadline_exhausted = True
                     last_outcome = SearchOutcome.TIMEOUT
                     last_message = "provider deadline exhausted"
                     break
@@ -366,7 +380,7 @@ async def _search_provider(
         accepted_result_count=len(accepted),
         message=last_message,
     )
-    return _ProviderResponse(accepted, attempt)
+    return _ProviderResponse(accepted, attempt, deadline_exhausted)
 
 
 async def _send_request(
