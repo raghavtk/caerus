@@ -17,32 +17,32 @@ from skills.agent_eval import list_fixture_ids, run_agent_eval
 
 @pytest.mark.live
 @pytest.mark.parametrize("fixture_id", list_fixture_ids())
-def test_live_jd_parser(fixture_id: str) -> None:
-    report = run_agent_eval("jd_parser", fixture_id)
+async def test_live_jd_parser(fixture_id: str) -> None:
+    report = await run_agent_eval("jd_parser", fixture_id)
     failed = [c for c in report.checks if not c.ok]
     assert report.passed, f"{fixture_id}: {[c.name + ': ' + c.detail for c in failed]}"
 
 
 @pytest.mark.live
 @pytest.mark.parametrize("fixture_id", list_fixture_ids())
-def test_live_resume_selector(fixture_id: str) -> None:
-    report = run_agent_eval("resume_selector", fixture_id)
+async def test_live_resume_selector(fixture_id: str) -> None:
+    report = await run_agent_eval("resume_selector", fixture_id)
     failed = [c for c in report.checks if not c.ok]
     assert report.passed, f"{fixture_id}: {[c.name + ': ' + c.detail for c in failed]}"
 
 
 @pytest.mark.live
 @pytest.mark.parametrize("fixture_id", list_fixture_ids())
-def test_live_cover_letter(fixture_id: str) -> None:
-    report = run_agent_eval("cover_letter", fixture_id)
+async def test_live_cover_letter(fixture_id: str) -> None:
+    report = await run_agent_eval("cover_letter", fixture_id)
     failed = [c for c in report.checks if not c.ok]
     assert report.passed, f"{fixture_id}: {[c.name + ': ' + c.detail for c in failed]}"
 
 
 @pytest.mark.live
 @pytest.mark.parametrize("fixture_id", ["systems_cloudflare"])
-def test_live_company_research_smoke(fixture_id: str) -> None:
+async def test_live_company_research_smoke(fixture_id: str) -> None:
     """Single-fixture smoke only — company research is search-heavy."""
-    report = run_agent_eval("company_research", fixture_id)
+    report = await run_agent_eval("company_research", fixture_id)
     failed = [c for c in report.checks if not c.ok]
     assert report.passed, f"{fixture_id}: {[c.name + ': ' + c.detail for c in failed]}"

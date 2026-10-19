@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     search_fallback_on_empty: bool = True
     search_timeout_seconds: int = Field(default=10, ge=1, le=60)
     search_max_attempts: int = Field(default=2, ge=1, le=3)
+    search_total_timeout_seconds: float = Field(default=20, gt=0, le=120)
+    research_search_timeout_seconds: float = Field(default=60, gt=0, le=300)
     search_concurrency: int = Field(default=3, ge=1, le=5)
 
     notion_token: str | None = None

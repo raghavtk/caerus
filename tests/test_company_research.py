@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import json
-import time
+import asyncio
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import date
-from threading import Lock, get_ident
+from threading import get_ident
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -199,29 +199,26 @@ def test_source_cap_is_category_balanced_before_round_robin_fill() -> None:
 @patch("agents.company_research.generate_structured", return_value=_ResearchDraft())
 @patch("agents.company_research.get_settings")
 @patch("agents.company_research.web_search")
-def test_searches_use_bounded_concurrency_and_preserve_query_order(
+async def test_searches_use_bounded_concurrency_and_preserve_query_order(
     mock_search, mock_settings, mock_generate, mock_profile
 ) -> None:
     mock_settings.return_value = Settings(_env_file=None, search_concurrency=2)
-    lock = Lock()
     active = 0
     max_active = 0
 
-    def search(query: str, num_results: int) -> SearchResponse:
+    async def search(query: str, num_results: int, **kwargs) -> SearchResponse:
         nonlocal active, max_active
-        with lock:
-            active += 1
-            max_active = max(max_active, active)
-        time.sleep(0.03 if "product engineering" in query else 0.005)
-        with lock:
-            active -= 1
+        active += 1
+        max_active = max(max_active, active)
+        await asyncio.sleep(0.03 if "product engineering" in query else 0.005)
+        active -= 1
         slug = str(abs(hash(query)))
         result = SearchResult(query, "evidence", f"https://d{slug}.test/a", "serper", query)
         return SearchResponse((result,), (), "serper")
 
     mock_search.side_effect = search
     jd = ParsedJD(company="Acme", role="Engineer")
-    brief = research_company(jd)
+    brief = await research_company(jd)
 
     expected_titles = [query for _, query in _build_search_queries("Acme", "Engineer", jd)]
     assert max_active == 2
@@ -230,7 +227,7 @@ def test_searches_use_bounded_concurrency_and_preserve_query_order(
 
 @patch("agents.company_research.get_settings")
 @patch("agents.company_research.web_search")
-def test_search_workers_inherit_trace_context_initialized_on_caller(
+async def test_search_tasks_inherit_trace_context_initialized_on_caller(
     mock_search, mock_settings
 ) -> None:
     marker: ContextVar[str] = ContextVar("trace_marker", default="missing")
@@ -247,7 +244,7 @@ def test_search_workers_inherit_trace_context_initialized_on_caller(
         finally:
             marker.reset(token)
 
-    def search(query: str, num_results: int) -> SearchResponse:
+    async def search(query: str, num_results: int, **kwargs) -> SearchResponse:
         worker_threads.append(get_ident())
         assert marker.get() == "caller-trace"
         return SearchResponse((), (), "serper")
@@ -255,12 +252,12 @@ def test_search_workers_inherit_trace_context_initialized_on_caller(
     mock_settings.return_value = Settings(_env_file=None, search_concurrency=2)
     mock_search.side_effect = search
     with patch("agents.company_research.trace_span", side_effect=fake_trace_span):
-        brief = research_company(ParsedJD(company="Acme", role="Engineer"))
+        brief = await research_company(ParsedJD(company="Acme", role="Engineer"))
 
     assert brief.research_status == ResearchStatus.UNAVAILABLE
     assert trace_threads == [caller_thread]
     assert worker_threads
-    assert all(thread_id != caller_thread for thread_id in worker_threads)
+    assert all(thread_id == caller_thread for thread_id in worker_threads)
 
 
 def test_oversized_prompt_remains_complete_valid_json() -> None:
@@ -311,8 +308,8 @@ def test_repair_payload_is_bounded_valid_json_for_large_scalar() -> None:
 
 @patch("agents.company_research.generate_structured")
 @patch("agents.company_research.web_search", return_value=_search_response())
-def test_no_evidence_skips_llm(mock_search, mock_generate) -> None:
-    brief = research_company(ParsedJD(company="Acme", role="Engineer"))
+async def test_no_evidence_skips_llm(mock_search, mock_generate) -> None:
+    brief = await research_company(ParsedJD(company="Acme", role="Engineer"))
 
     mock_generate.assert_not_called()
     assert mock_search.call_count == 5
@@ -325,8 +322,8 @@ def test_no_evidence_skips_llm(mock_search, mock_generate) -> None:
 @patch("agents.company_research.get_user_profile", return_value={"projects": []})
 @patch("agents.company_research.generate_structured")
 @patch("agents.company_research.web_search")
-def test_partial_search_and_invalid_citation_are_repaired_once(mock_search, mock_generate, mock_profile) -> None:
-    def search(query: str, num_results: int) -> SearchResponse:
+async def test_partial_search_and_invalid_citation_are_repaired_once(mock_search, mock_generate, mock_profile) -> None:
+    async def search(query: str, num_results: int, **kwargs) -> SearchResponse:
         if "product engineering" in query:
             raise RuntimeError("provider down")
         if "team technology" in query:
@@ -355,7 +352,7 @@ def test_partial_search_and_invalid_citation_are_repaired_once(mock_search, mock
     )
     mock_generate.side_effect = [invalid, repaired]
 
-    brief = research_company(
+    brief = await research_company(
         ParsedJD(company="Acme", role="Platform Engineer", requirements=["Python"])
     )
 
@@ -373,7 +370,7 @@ def test_partial_search_and_invalid_citation_are_repaired_once(mock_search, mock
 @patch("agents.company_research.get_user_profile", return_value={"projects": []})
 @patch("agents.company_research.generate_structured")
 @patch("agents.company_research.web_search")
-def test_failed_repair_returns_safe_partial(mock_search, mock_generate, mock_profile) -> None:
+async def test_failed_repair_returns_safe_partial(mock_search, mock_generate, mock_profile) -> None:
     mock_search.return_value = _search_response(
         {"title": "Engineering", "url": "https://acme.test/eng", "snippet": "Evidence"}
     )
@@ -385,7 +382,7 @@ def test_failed_repair_returns_safe_partial(mock_search, mock_generate, mock_pro
         RuntimeError("repair unavailable"),
     ]
 
-    brief = research_company(ParsedJD(company="Acme", role="Engineer"))
+    brief = await research_company(ParsedJD(company="Acme", role="Engineer"))
 
     assert brief.research_status == ResearchStatus.PARTIAL
     assert brief.culture_notes == []
@@ -396,7 +393,7 @@ def test_failed_repair_returns_safe_partial(mock_search, mock_generate, mock_pro
 @patch("agents.company_research.get_user_profile", return_value={"projects": []})
 @patch("agents.company_research.generate_structured")
 @patch("agents.company_research.web_search")
-def test_complete_status_requires_valid_core_evidence_and_no_search_failures(
+async def test_complete_status_requires_valid_core_evidence_and_no_search_failures(
     mock_search, mock_generate, mock_profile
 ) -> None:
     mock_search.return_value = _search_response(
@@ -415,7 +412,7 @@ def test_complete_status_requires_valid_core_evidence_and_no_search_failures(
         ],
     )
 
-    brief = research_company(ParsedJD(company="Acme", role="Platform Engineer"))
+    brief = await research_company(ParsedJD(company="Acme", role="Platform Engineer"))
 
     assert brief.research_status == ResearchStatus.COMPLETE
     assert mock_generate.call_count == 1
@@ -424,7 +421,7 @@ def test_complete_status_requires_valid_core_evidence_and_no_search_failures(
 @patch("agents.company_research.get_user_profile", return_value={"projects": []})
 @patch("agents.company_research.generate_structured")
 @patch("agents.company_research.web_search")
-def test_uncited_downstream_fields_are_removed(mock_search, mock_generate, mock_profile) -> None:
+async def test_uncited_downstream_fields_are_removed(mock_search, mock_generate, mock_profile) -> None:
     mock_search.return_value = _search_response(
         {"title": "Engineering", "url": "https://acme.test/eng", "snippet": "Python platform"}
     )
@@ -435,7 +432,7 @@ def test_uncited_downstream_fields_are_removed(mock_search, mock_generate, mock_
         talking_points=["Unsupported talking point"],
     )
 
-    brief = research_company(ParsedJD(company="Acme", role="Engineer"))
+    brief = await research_company(ParsedJD(company="Acme", role="Engineer"))
 
     assert brief.strong_overlaps == []
     assert brief.potential_angles == []
@@ -461,7 +458,7 @@ def test_fit_score_does_not_reward_uncited_model_overlap_counts() -> None:
 @patch("agents.company_research.get_user_profile", return_value={"projects": []})
 @patch("agents.company_research.generate_structured")
 @patch("agents.company_research.web_search")
-def test_orphan_claims_cannot_make_research_complete_or_inflate_fit(
+async def test_orphan_claims_cannot_make_research_complete_or_inflate_fit(
     mock_search, mock_generate, mock_profile
 ) -> None:
     mock_search.return_value = _search_response(
@@ -474,7 +471,7 @@ def test_orphan_claims_cannot_make_research_complete_or_inflate_fit(
         ]
     )
 
-    brief = research_company(
+    brief = await research_company(
         ParsedJD(company="Acme", role="Python Engineer", requirements=["Python"])
     )
 

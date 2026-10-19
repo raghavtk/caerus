@@ -150,3 +150,7 @@ Soft expectations (not brittle golden dumps) live in `tests/fixtures/expectation
 Cursor agents and CI must **not** set `CAERUS_ALLOW_LIVE` or run `pytest -m live` / `caerus eval run` unless the human explicitly asks in that turn. Quota is limited (~1000 requests/month).
 
 See also `.cursor/rules/no-live-evals.mdc`.
+
+Async search, research, orchestration, and live eval tests use pytest-asyncio
+(auto mode configured in pyproject.toml). Install the dev extras before running
+tests. Await the public async APIs from an existing event loop.

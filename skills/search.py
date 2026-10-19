@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from enum import Enum
 import re
-from typing import Callable, Literal
+from typing import Awaitable, Callable, Literal
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
@@ -116,15 +117,25 @@ def canonicalize_url(value: object) -> str | None:
     return urlunsplit((scheme, hostname + port, path, urlencode(query), ""))
 
 
-def web_search(query: str, num_results: int = 5) -> SearchResponse:
-    """Search configured providers with bounded retries and typed diagnostics."""
+async def web_search(
+    query: str, num_results: int = 5, *, client: httpx.AsyncClient | None = None
+) -> SearchResponse:
+    """Search with bounded retries and a total deadline across fallback.
+
+    Caller-owned clients remain open. Cancellation propagates to the caller.
+    """
     query = query.strip()
     if not query:
         raise ValueError("query must not be blank")
     if not 1 <= num_results <= 20:
         raise ValueError("num_results must be between 1 and 20")
 
+    if client is None:
+        async with httpx.AsyncClient(follow_redirects=False) as owned_client:
+            return await web_search(query, num_results, client=owned_client)
+
     settings = get_settings()
+    deadline = time.monotonic() + settings.search_total_timeout_seconds
     providers = _provider_order(settings)
     attempts: list[SearchAttempt] = []
     selected_provider: SearchProvider | None = None
@@ -156,12 +167,13 @@ def web_search(query: str, num_results: int = 5) -> SearchResponse:
                 attempts.append(attempt)
                 provider_response = _ProviderResponse((), attempt)
             else:
-                provider_response = _search_provider(
+                provider_response = await _search_provider(
                     provider,
                     query=query,
                     num_results=num_results,
                     api_key=api_key,
-                    timeout_seconds=settings.search_timeout_seconds,
+                    timeout_seconds=min(settings.search_timeout_seconds, max(0, deadline - time.monotonic())),
+                    client=client,
                     max_attempts=settings.search_max_attempts,
                 )
                 attempts.append(provider_response.attempt)
@@ -181,6 +193,8 @@ def web_search(query: str, num_results: int = 5) -> SearchResponse:
             is_empty = provider_response.attempt.outcome == SearchOutcome.EMPTY
             has_next = index + 1 < len(providers)
             if is_empty and (not settings.search_fallback_on_empty or not has_next):
+                break
+            if time.monotonic() >= deadline:
                 break
             if has_next:
                 fallback_reason = f"{provider}_{provider_response.attempt.outcome.value}"
@@ -212,16 +226,16 @@ def _provider_key(settings: Settings, provider: SearchProvider) -> str | None:
     return settings.serper_api_key if provider == "serper" else settings.tavily_api_key
 
 
-def _search_provider(
+async def _search_provider(
     provider: SearchProvider,
     *,
     query: str,
     num_results: int,
     api_key: str,
-    timeout_seconds: int,
+    timeout_seconds: float,
     max_attempts: int,
-    client: httpx.Client | None = None,
-    sleep: Callable[[float], None] = time.sleep,
+    client: httpx.AsyncClient | None = None,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     monotonic: Callable[[], float] = time.monotonic,
     now_utc: Callable[[], datetime] = _utc_now,
 ) -> _ProviderResponse:
@@ -234,7 +248,7 @@ def _search_provider(
     raw_count = 0
     accepted: tuple[SearchResult, ...] = ()
     owns_client = client is None
-    search_client = client or httpx.Client(follow_redirects=False)
+    search_client = client or httpx.AsyncClient(follow_redirects=False)
 
     try:
         for attempt_number in range(1, max_attempts + 1):
@@ -245,22 +259,23 @@ def _search_provider(
                 break
             attempts_made = attempt_number
             try:
-                response = _send_request(
-                    search_client,
-                    provider,
-                    query=query,
-                    num_results=num_results,
-                    api_key=api_key,
-                    deadline=deadline,
-                    monotonic=monotonic,
-                )
+                async with asyncio.timeout(remaining):
+                    response = await _send_request(
+                        search_client,
+                        provider,
+                        query=query,
+                        num_results=num_results,
+                        api_key=api_key,
+                        deadline=deadline,
+                        monotonic=monotonic,
+                    )
             except _ResponseTooLarge:
                 last_outcome = SearchOutcome.MALFORMED_RESPONSE
                 last_status = None
                 last_message = "provider response exceeded the size limit"
                 retryable = False
                 response = None
-            except httpx.TimeoutException:
+            except (httpx.TimeoutException, TimeoutError):
                 last_outcome = SearchOutcome.TIMEOUT
                 last_status = None
                 last_message = "provider request timed out"
@@ -328,10 +343,16 @@ def _search_provider(
                 last_message = f"{last_message}; retry delay exceeds provider deadline"
                 break
             if delay > 0:
-                sleep(delay)
+                try:
+                    async with asyncio.timeout(remaining):
+                        await sleep(delay)
+                except TimeoutError:
+                    last_outcome = SearchOutcome.TIMEOUT
+                    last_message = "provider deadline exhausted"
+                    break
     finally:
         if owns_client:
-            search_client.close()
+            await search_client.aclose()
 
     elapsed_ms = max(0, round((monotonic() - started) * 1000))
     attempt = SearchAttempt(
@@ -347,8 +368,8 @@ def _search_provider(
     return _ProviderResponse(accepted, attempt)
 
 
-def _send_request(
-    client: httpx.Client,
+async def _send_request(
+    client: httpx.AsyncClient,
     provider: SearchProvider,
     *,
     query: str,
@@ -376,7 +397,7 @@ def _send_request(
         payload = {"query": query, "max_results": num_results}
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
-    with client.stream("POST", url, json=payload, headers=headers, timeout=timeout) as streamed:
+    async with client.stream("POST", url, json=payload, headers=headers, timeout=timeout) as streamed:
         content_length = streamed.headers.get("Content-Length")
         try:
             declared_size = int(content_length) if content_length is not None else None
@@ -387,7 +408,7 @@ def _send_request(
 
         chunks: list[bytes] = []
         total_bytes = 0
-        for chunk in streamed.iter_bytes():
+        async for chunk in streamed.aiter_bytes():
             if monotonic() >= deadline:
                 raise httpx.ReadTimeout("provider deadline exhausted", request=streamed.request)
             total_bytes += len(chunk)

@@ -20,7 +20,8 @@ dependencies = [
   "pypdf>=5.0.0",
   "Pillow>=10.0.0",
   "tenacity>=8.3.0",
-  "google-genai>=0.4.0",
+  # Async research requires the SDK async context manager for cleanup.
+  "google-genai>=1.40.0",
   "instructor>=1.4.0",
   "langfuse>=2.37.6",
 ]
@@ -28,6 +29,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest>=8.2.0",
+  "pytest-asyncio>=0.23",
 ]
 
 [project.scripts]
@@ -35,6 +37,7 @@ caerus = "cli:app"
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+asyncio_mode = "auto"
 markers = [
   "live: hits Gemini/search APIs; requires CAERUS_ALLOW_LIVE=1 (deselected otherwise)",
 ]
