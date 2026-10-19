@@ -26,7 +26,8 @@ async def test_total_deadline_stops_request_and_prevents_fallback():
             stopped.set()
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        with patch('skills.search.get_settings', return_value=settings(search_total_timeout_seconds=0.03)):
+        # Leave room for cold httpx imports on Windows CI before entering the handler.
+        with patch('skills.search.get_settings', return_value=settings(search_total_timeout_seconds=0.3)):
             response = await web_search('query', client=client)
         assert not client.is_closed
     assert stopped.is_set()

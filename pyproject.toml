@@ -42,5 +42,8 @@ markers = [
 ]
 
 [tool.setuptools]
-packages = ["agents", "skills", "skills.ats_scrapers", "schemas"]
+packages = ["agents", "skills", "skills.ats_scrapers", "skills.demo_data", "schemas"]
 py-modules = ["cli", "config", "llm"]
+
+[tool.setuptools.package-data]
+skills = ["demo_data/*.json", "demo_data/*.txt"]

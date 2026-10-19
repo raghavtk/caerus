@@ -1,0 +1,3 @@
+Northstar Labs (fictional) seeks a Backend Engineer in Remote, US.
+Build Python services and reliable task queues. Measure service latency and
+improve retry handling. Familiarity with automated tests is preferred.

@@ -15,6 +15,7 @@ from loguru import logger
 
 from config import Settings, get_settings
 from skills.tracing import trace_span
+from skills.metrics import record_request
 
 SearchProvider = Literal["serper", "tavily"]
 _TRACKING_PARAMS = {"fbclid", "gclid", "mc_cid", "mc_eid", "ref", "source"}
@@ -397,6 +398,7 @@ async def _send_request(
         payload = {"query": query, "max_results": num_results}
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
+    record_request(provider)
     async with client.stream("POST", url, json=payload, headers=headers, timeout=timeout) as streamed:
         content_length = streamed.headers.get("Content-Length")
         try:

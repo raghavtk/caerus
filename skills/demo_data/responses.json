@@ -1,0 +1,50 @@
+{
+  "jd": {
+    "company": "Northstar Labs (fictional)",
+    "role": "Backend Engineer",
+    "location": "Remote, US",
+    "requirements": [
+      "Python",
+      "task queues",
+      "latency instrumentation"
+    ],
+    "preferred": [
+      "automated tests"
+    ]
+  },
+  "company_brief": {
+    "company": "Northstar Labs (fictional)",
+    "fit_score": 80,
+    "research_status": "partial",
+    "role_context": [
+      "Build reliable Python services and task queues."
+    ],
+    "candidate_overlaps": [
+      "Queue Lab demonstrates retry handling and latency instrumentation."
+    ],
+    "concerns_or_unknowns": [
+      "Synthetic replay: no external company research was performed."
+    ]
+  },
+  "resume_selection": {
+    "variant": "SYSTEMS",
+    "grade": "B",
+    "fit_score": 80,
+    "strengths": [
+      "Python task queue project"
+    ],
+    "gaps": [
+      "Production scale experience is unknown"
+    ],
+    "talking_points": [
+      "Discuss retry handling in Queue Lab"
+    ]
+  },
+  "cover_letter": {
+    "company": "Northstar Labs (fictional)",
+    "role": "Backend Engineer",
+    "body": "Northstar Labs' focus on reliable Python services connects with my work on Queue Lab. I am interested in the Backend Engineer role and its emphasis on task queues and service latency.\n\nIn Queue Lab, I built a Python task queue with retry handling and latency instrumentation. That project gave me a concrete way to explore how retries affect task processing and how measurements can guide improvements.\n\nI would welcome the opportunity to discuss how this experience relates to your service reliability work. Thank you for considering my application.",
+    "hook_summary": "Queue Lab and reliable Python services",
+    "word_count": 88
+  }
+}

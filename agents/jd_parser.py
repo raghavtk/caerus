@@ -4,6 +4,7 @@ from urllib.parse import quote, urlsplit
 
 import httpx
 from loguru import logger
+from skills.metrics import record_request
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from llm import generate_structured
@@ -43,6 +44,7 @@ def _fetch_via_jina(url: str) -> str:
     encoded = quote(url, safe=":/?&=#")
     headers = {"Accept": "text/plain"}
     with httpx.Client(timeout=20, follow_redirects=True, headers=headers) as client:
+        record_request("jina")
         response = client.get(f"https://r.jina.ai/{encoded}")
         response.raise_for_status()
         text = response.text.strip()

@@ -1,0 +1,50 @@
+{
+  "stages": {
+    "parse_jd": {
+      "latency_seconds": 0.00011580000136746094,
+      "requests": {},
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "usage_missing_requests": 0,
+      "estimated_cost_usd": 0.0,
+      "status": "completed"
+    },
+    "company_research": {
+      "latency_seconds": 0.0001838000025600195,
+      "requests": {},
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "usage_missing_requests": 0,
+      "estimated_cost_usd": 0.0,
+      "status": "completed"
+    },
+    "resume_selection": {
+      "latency_seconds": 0.00009490000229561701,
+      "requests": {},
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "usage_missing_requests": 0,
+      "estimated_cost_usd": 0.0,
+      "status": "completed"
+    },
+    "cover_letter": {
+      "latency_seconds": 0.00006790000043110922,
+      "requests": {},
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "usage_missing_requests": 0,
+      "estimated_cost_usd": 0.0,
+      "status": "completed"
+    },
+    "write_outputs": {
+      "latency_seconds": 0.02273649999551708,
+      "requests": {},
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "usage_missing_requests": 0,
+      "estimated_cost_usd": 0.0,
+      "status": "completed"
+    }
+  },
+  "cost_scope": "LLM token cost only; excludes search, Notion and infrastructure"
+}

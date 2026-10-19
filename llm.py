@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from config import get_settings
 from skills.tracing import trace_generation
+from skills.metrics import record_request, record_usage
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -27,6 +28,7 @@ def generate_text(
         raise ValueError("GEMINI_API_KEY is not configured")
 
     client = genai.Client(api_key=settings.gemini_api_key)
+    record_request("gemini")
     response = client.models.generate_content(
         model=settings.gemini_model,
         contents=f"USER INPUT:\n{user_prompt}\n\nReturn plain text only.",
@@ -36,6 +38,11 @@ def generate_text(
         },
     )
 
+    record_usage(
+        response,
+        input_rate=getattr(settings, "llm_input_usd_per_million", None),
+        output_rate=getattr(settings, "llm_output_usd_per_million", None),
+    )
     text = (response.text or "").strip()
     if not text:
         raise ValueError("Gemini returned empty response")
@@ -69,6 +76,7 @@ def generate_structured(
         raise ValueError("GEMINI_API_KEY is not configured")
 
     client = genai.Client(api_key=settings.gemini_api_key)
+    record_request("gemini")
     response = client.models.generate_content(
         model=settings.gemini_model,
         contents=f"USER INPUT:\n{user_prompt}\n\nReturn JSON only.",
@@ -79,6 +87,11 @@ def generate_structured(
         },
     )
 
+    record_usage(
+        response,
+        input_rate=getattr(settings, "llm_input_usd_per_million", None),
+        output_rate=getattr(settings, "llm_output_usd_per_million", None),
+    )
     text = (response.text or "").strip()
     if not text:
         raise ValueError("Gemini returned empty response")
@@ -120,6 +133,7 @@ async def generate_structured_async(
 
     client = genai.Client(api_key=settings.gemini_api_key)
     async with client.aio as async_client:
+        record_request("gemini")
         response = await async_client.models.generate_content(
             model=settings.gemini_model,
             contents=f"USER INPUT:\n{user_prompt}\n\nReturn JSON only.",
@@ -130,6 +144,11 @@ async def generate_structured_async(
             },
         )
 
+    record_usage(
+        response,
+        input_rate=getattr(settings, "llm_input_usd_per_million", None),
+        output_rate=getattr(settings, "llm_output_usd_per_million", None),
+    )
     text = (response.text or "").strip()
     if not text:
         raise ValueError("Gemini returned empty response")

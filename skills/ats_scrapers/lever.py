@@ -5,6 +5,7 @@ from urllib.parse import quote, urlsplit
 from bs4 import BeautifulSoup
 import httpx
 from loguru import logger
+from skills.metrics import record_request
 
 from skills.ats_scrapers.common import (
     FetchedJobPosting,
@@ -121,6 +122,7 @@ def _posting_from_api(url: str, posting_id: str, payload: dict[str, object]) -> 
 def _fetch_api(url: str, site: str, posting_id: str, api_root: str) -> FetchedJobPosting:
     endpoint = f"{api_root}/v0/postings/{quote(site, safe='')}/{quote(posting_id, safe='')}"
     with httpx.Client(timeout=20, follow_redirects=True, headers=_HEADERS) as client:
+        record_request("lever")
         response = client.get(endpoint)
         response.raise_for_status()
         payload = response.json()
@@ -131,6 +133,7 @@ def _fetch_api(url: str, site: str, posting_id: str, api_root: str) -> FetchedJo
 
 def _fetch_html(url: str, posting_id: str) -> FetchedJobPosting:
     with httpx.Client(timeout=20, follow_redirects=True, headers=_HEADERS) as client:
+        record_request("lever")
         response = client.get(url)
         response.raise_for_status()
     soup = BeautifulSoup(response.text, "html.parser")

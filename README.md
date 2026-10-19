@@ -2,6 +2,53 @@
 
 God of opportunity, luck, and favorable moments.
 
+## Clean installation and offline demo
+
+Install Python 3.11+ and [uv](https://docs.astral.sh/uv/getting-started/installation/).
+From a clean checkout, on Windows, macOS or Linux:
+
+```sh
+uv sync --locked --extra dev
+uv run --frozen caerus demo
+uv run --frozen --extra dev pytest -q
+```
+
+`uv.lock` pins direct and transitive dependencies. CI checks the locked install,
+offline tests, demo and wheel build on Windows and Linux with Python 3.11/3.12.
+Use `uv lock` to intentionally update dependencies and commit the changed lock.
+
+The demo needs no `.env`, API keys, personal profile, resume, LibreOffice or
+Poppler. It replays bundled synthetic stage responses through the orchestrator;
+it demonstrates pipeline wiring and output generation, not live model quality.
+Even if credentials exist locally, the demo never loads settings or enables tracing.
+Run `uv run --frozen caerus demo --output-dir outputs/my-demo` to choose a destination.
+Each run creates a new directory with a fictional candidate profile, saved job and
+responses, company brief, resume report, Markdown letter, `application.json`, and
+`metrics.json`. Demo letters use Markdown; live runs retain DOCX/PDF rendering.
+See [sample outputs](examples/demo) for the saved text artifacts.
+
+For live runs, copy `.env.example` to `.env`, configure Gemini and a search provider,
+and copy `context/user_profile.example.yaml` to `context/user_profile.yaml` with
+your information. Add resumes under `resumes/` and install the document tools below.
+Use `uv run caerus run "JOB_URL_OR_TEXT" --no-notion` to omit optional Notion sync.
+
+## Local metrics
+
+Every successful pipeline run prints stage latency, request counts, input/output
+tokens and estimated USD, and saves `metrics.json` in its output directory.
+Metrics work independently of Langfuse. Counts include explicit Gemini calls and
+search attempts (including retries/fallback), job-page fetches and Notion API calls.
+SDK-internal retries, HTTP redirects and tracing traffic are not counted. Async search tasks
+share their parent stage counters; concurrent runs have separate counters.
+
+Token totals come from Gemini usage metadata, including thinking tokens in output.
+Set `LLM_INPUT_USD_PER_MILLION` and `LLM_OUTPUT_USD_PER_MILLION` to the applicable
+rates for your configured model. No current prices are assumed. Estimates exclude
+search, Notion and infrastructure costs, cached-token discounts and pricing tiers.
+Missing usage or rates yields `null` (displayed as `unknown`), not a free request.
+Offline replay makes zero requests, consumes zero tokens and has zero estimated cost.
+Metrics contain no prompts, profile content or credentials. Latencies vary per run.
+
 ## Document output prerequisites
 
 Cover letters are written as editable DOCX files and converted to one-page PDFs. Install LibreOffice
