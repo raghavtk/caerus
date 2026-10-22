@@ -17,6 +17,14 @@ opt-in. See the [test guide](../tests/README.md) for fixture and eval commands.
 
 ## Update dependencies
 
+Use uv 0.13.4 or newer and, when installing with pip, pip 26.2.2 or newer.
+These versions include trust-store fixes for the October 2026 eMudhra/emSign
+certificate incident. Caerus also requires certifi 2026.10.19 or newer. Update
+existing environments as well as the lockfile, then restart application processes
+so they load the corrected trust bundle. Follow the
+[Python security announcement](https://discuss.python.org/t/information-for-python-users-regarding-emudhra-emsign-ca-certificate-security-incident/109576)
+for system and bundled trust stores. Keep certificate verification enabled.
+
 `uv.lock` records dependency requirements and resolved versions. After changing
 `pyproject.toml`, or merging a branch that changes dependencies, run:
 
