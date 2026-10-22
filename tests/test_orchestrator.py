@@ -9,6 +9,11 @@ from agents.orchestrator import orchestrate
 from schemas.models import CompanyBrief, ParsedJD, ResumeSelection
 
 
+@pytest.fixture(autouse=True)
+def private_state_directory(tmp_path, monkeypatch):
+    monkeypatch.setenv("OUTPUTS_DIR", str(tmp_path / "outputs"))
+
+
 @patch("agents.orchestrator.write_outputs")
 @patch("agents.orchestrator.generate_cover_letter", side_effect=CoverLetterQualityError(["invalid draft"]))
 @patch("agents.orchestrator.select_resume", return_value=ResumeSelection())
@@ -24,6 +29,8 @@ async def test_quality_failure_prevents_output_writes(
     mock_write_outputs,
 ) -> None:
     trace = MagicMock()
+    trace.trace_id = None
+    trace.trace_url = None
     mock_pipeline_trace.return_value.__enter__.return_value = trace
     trace.step.return_value.__enter__.return_value = MagicMock()
 

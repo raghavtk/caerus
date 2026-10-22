@@ -191,6 +191,7 @@ class CoverLetterRecipient(BaseModel):
 
 class ApplicationPackage(BaseModel):
     metrics: RunMetrics = Field(default_factory=RunMetrics)
+    checkpoint_path: str | None = None
     jd: ParsedJD
     company_brief: CompanyBrief | None = None
     resume_selection: ResumeSelection | None = None

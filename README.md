@@ -90,6 +90,12 @@ HTTP redirects, and tracing traffic are excluded. Output token counts include
 Gemini thinking tokens. Cost estimates exclude search charges, other services,
 cached-token discounts, and pricing tiers.
 
+## Resume an interrupted run
+
+Pipeline stages are saved locally so failed runs can resume without regenerating
+completed work. Use `caerus run --resume "outputs/.runs/<session>/state.json"`.
+See [pipeline recovery](docs/pipeline-recovery.md) for guarantees and limitations.
+
 ## Connect optional services
 
 To log applications in Notion, configure `NOTION_TOKEN` and `NOTION_DATABASE_ID`,

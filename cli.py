@@ -57,12 +57,21 @@ def run(
     url_or_text: str | None = typer.Argument(default=None),
     no_notion: bool = typer.Option(default=False, help="Skip Notion logging"),
     print_cover_letter: bool = typer.Option(default=False, help="Print generated cover letter body"),
+    resume: Path | None = typer.Option(default=None, help="Resume a saved pipeline state.json"),
 ) -> None:
-    value = url_or_text or typer.prompt("Paste job URL or JD text")
+    if resume is not None and url_or_text is not None:
+        console.print("[red]Error:[/red] Provide job input or --resume, not both")
+        raise typer.Exit(code=2)
+    value = None if resume is not None else (url_or_text or typer.prompt("Paste job URL or JD text"))
     try:
-        package = asyncio.run(orchestrate(value, skip_notion=no_notion))
+        if resume is not None:
+            package = asyncio.run(orchestrate(skip_notion=no_notion, resume_from=resume))
+        else:
+            package = asyncio.run(orchestrate(value, skip_notion=no_notion))
     except Exception as exc:
         console.print(f"[red]Error:[/red] {exc}")
+        for note in getattr(exc, "__notes__", []):
+            console.print(note, markup=False)
         raise typer.Exit(code=1)
 
     table = Table(title="Caerus Application Summary")
@@ -78,6 +87,7 @@ def run(
     table.add_row("Cover Letter Word Count", str(package.cover_letter.word_count) if package.cover_letter else "0")
     table.add_row("Hook Used", package.cover_letter.hook_summary if package.cover_letter else "")
     table.add_row("Output Dir", package.output_dir or "")
+    table.add_row("Checkpoint", package.checkpoint_path or "")
     table.add_row("Notion URL", package.notion_url or "")
     if package.session_id:
         table.add_row("Session ID", package.session_id)
