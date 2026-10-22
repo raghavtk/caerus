@@ -41,6 +41,17 @@ def test_demo_cli(tmp_path):
     assert "No API requests" in result.output
 
 
+async def test_demo_does_not_read_production_settings_or_create_checkpoints(tmp_path, monkeypatch):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Demo accessed production recovery state")
+    monkeypatch.setattr("agents.orchestrator.get_settings", forbidden)
+    monkeypatch.setattr("agents.orchestrator.CheckpointStore", forbidden)
+    package = await run_demo(tmp_path)
+    assert package.status == "completed"
+    assert package.checkpoint_path is None
+    assert not (tmp_path / ".runs").exists()
+
+
 async def test_accounting_inherits_search_tasks_and_isolates_runs():
     async def run(count):
         metrics = RunMetrics()
